@@ -7,9 +7,9 @@ def create_cube_hold(
     hold_width_mm=80.0,
     hold_height_mm=60.0,
     hold_depth_mm=40.0,
-    hole_width_mm=50.0,
-    hole_height_mm=30.0,
-    hole_depth_mm=15.0,
+    hole_width_mm=70.0,
+    hole_height_mm=50.0,
+    hole_depth_mm=30.0,
     back_wall_mm=1.0,
     bevel_radius_mm=4.0,
     bevel_segments=4,
@@ -79,8 +79,8 @@ def create_cube_hold(
         verts=verts,
         vec=(
             hold_width / 2.0,
-            hold_height / 2.0,
             hold_depth / 2.0,
+            hold_height / 2.0,
         ),
     )
 
@@ -91,14 +91,14 @@ def create_cube_hold(
     bmesh.ops.translate(
         bm,
         verts=bm.verts,
-        vec=(0.0, -hold_height / 2.0, 0.0),
+        vec=(0.0, -hold_depth/4, 0.0),
     )
 
     # --------------------------------------------------
     # Bevel front face edges
     # --------------------------------------------------
 
-    front_y = -hold_height
+    front_y = min(vertex.co.y for vertex in bm.verts)
     tol = 1e-6
 
     front_edges = []
@@ -160,8 +160,8 @@ def create_cube_hold(
         verts=cutter_verts,
         vec=(
             hole_width / 2.0,
-            hole_height / 2.0,
             hole_depth / 2.0,
+            hole_height / 2.0,
         ),
     )
 
@@ -181,7 +181,7 @@ def create_cube_hold(
 
     cutter_obj.location = (
         0.0,
-        -(back_wall + hole_height / 2.0),
+        -(back_wall + hole_depth / 4.0),
         hold_depth / 2.0 - hole_depth / 2.0,
     )
 
