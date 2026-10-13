@@ -220,6 +220,26 @@ def create_cube_hold(
         do_unlink=True,
     )
 
+    hold_material = bpy.data.materials.get("HoldMaterial")
+    if hold_material is None:
+        hold_material = bpy.data.materials.new(name="HoldMaterial")
+        hold_material.diffuse_color = (0.8, 0.0, 0.0, 1.0)
+        hold_material.roughness = 0.8
+        hold_material.use_nodes = True
+        principled = hold_material.node_tree.nodes.get("Principled BSDF")
+        if principled is not None:
+            principled.inputs["Base Color"].default_value = (
+                1.0, 0.0, 0.0, 1.0
+            )
+            principled.inputs["Roughness"].default_value = 0.8
+    if hold_obj.data.materials:
+        hold_obj.data.materials[0] = hold_material
+    else:
+        hold_obj.data.materials.append(hold_material)
+    hold_obj.active_material_index = 0
+    for poly in hold_obj.data.polygons:
+        poly.material_index = 0
+
     # --------------------------------------------------
     # Smooth shading
     # --------------------------------------------------
