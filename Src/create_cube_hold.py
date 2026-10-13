@@ -110,7 +110,7 @@ def create_cube_hold(
 
         if (
             abs(y0 - front_y) < tol
-            and abs(y1 - front_y) < tol
+            or abs(y1 - front_y) < tol
         ):
             front_edges.append(edge)
 
