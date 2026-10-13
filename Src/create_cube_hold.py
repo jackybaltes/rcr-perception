@@ -1,5 +1,7 @@
 import bpy
 import bmesh
+import random
+from mathutils import Vector
 
 
 def create_cube_hold(
@@ -253,5 +255,93 @@ def create_cube_hold(
     print("Vertices:", len(hold_obj.data.vertices))
     print("Faces:", len(hold_obj.data.polygons))
     print("Dimensions:", hold_obj.dimensions)
+
+    return hold_obj
+
+
+def select_random_coordinate(face_obj, face_index, seed=None):
+    """Return a uniformly random world-space point inside a mesh face."""
+    if face_obj.type != 'MESH':
+        raise TypeError("face_obj must be a mesh object")
+
+    if not 0 <= face_index < len(face_obj.data.polygons):
+        raise IndexError(
+            f"face_index {face_index} out of range "
+            f"({len(face_obj.data.polygons)} faces)"
+        )
+
+    mesh = face_obj.data
+    mesh.calc_loop_triangles()
+    triangles = []
+    total_area = 0.0
+
+    for triangle in mesh.loop_triangles:
+        if triangle.polygon_index != face_index:
+            continue
+
+        points = [
+            face_obj.matrix_world @ mesh.vertices[index].co
+            for index in triangle.vertices
+        ]
+        area = (points[1] - points[0]).cross(
+            points[2] - points[0]
+        ).length * 0.5
+        if area > 0.0:
+            triangles.append((points, area))
+            total_area += area
+
+    if not triangles:
+        raise ValueError("face has no positive-area triangles")
+
+    rng = random.Random(seed)
+    selection = rng.uniform(0.0, total_area)
+    for points, area in triangles:
+        selection -= area
+        if selection <= 0.0:
+            first, second, third = points
+            u, v = rng.random(), rng.random()
+            if u + v > 1.0:
+                u, v = 1.0 - u, 1.0 - v
+            return first + (second - first) * u + (third - first) * v
+
+    return points[0].copy()
+
+
+def add_hold_to_face(hold_obj, face_obj, face_index, seed=None):
+    """Place a hold on a mesh face, with its local -Y axis facing outward."""
+    if hold_obj.type != 'MESH' or face_obj.type != 'MESH':
+        raise TypeError("hold_obj and face_obj must be mesh objects")
+
+    if not 0 <= face_index < len(face_obj.data.polygons):
+        raise IndexError(
+            f"face_index {face_index} out of range "
+            f"({len(face_obj.data.polygons)} faces)"
+        )
+
+    if not hold_obj.data.vertices:
+        raise ValueError("hold_obj must have mesh vertices")
+
+    face = face_obj.data.polygons[face_index]
+    normal_matrix = face_obj.matrix_world.to_3x3().inverted().transposed()
+    face_normal = (normal_matrix @ face.normal).normalized()
+    rotation = Vector((0.0, -1.0, 0.0)).rotation_difference(face_normal)
+
+    rear_y = max(vertex.co.y for vertex in hold_obj.data.vertices)
+    rear_center = Vector((0.0, rear_y, 0.0))
+    scaled_rear_center = Vector((
+        rear_center.x * hold_obj.scale.x,
+        rear_center.y * hold_obj.scale.y,
+        rear_center.z * hold_obj.scale.z,
+    ))
+    face_point = select_random_coordinate(face_obj, face_index, seed=seed)
+
+    hold_obj.rotation_mode = 'QUATERNION'
+    hold_obj.rotation_quaternion = rotation
+    hold_obj.location = face_point - rotation @ scaled_rear_center
+
+    bpy.context.view_layer.update()
+    world_matrix = hold_obj.matrix_world.copy()
+    hold_obj.parent = face_obj
+    hold_obj.matrix_world = world_matrix
 
     return hold_obj
