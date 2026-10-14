@@ -307,7 +307,7 @@ def select_random_coordinate(face_obj, face_index, seed=None):
     return points[0].copy()
 
 
-def add_hold_to_face(hold_obj, face_obj, face_index, seed=None):
+def add_hold_to_face(hold_obj, face_obj, face_index, pt=None, seed=None):
     """Place a hold on a mesh face, with its local -Y axis facing outward."""
     if hold_obj.type != 'MESH' or face_obj.type != 'MESH':
         raise TypeError("hold_obj and face_obj must be mesh objects")
@@ -333,7 +333,9 @@ def add_hold_to_face(hold_obj, face_obj, face_index, seed=None):
         rear_center.y * hold_obj.scale.y,
         rear_center.z * hold_obj.scale.z,
     ))
-    face_point = select_random_coordinate(face_obj, face_index, seed=seed)
+    face_point = pt if pt is not None else select_random_coordinate(
+        face_obj, face_index, seed=seed
+    )
 
     hold_obj.rotation_mode = 'QUATERNION'
     hold_obj.rotation_quaternion = rotation

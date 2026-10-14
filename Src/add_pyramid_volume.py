@@ -108,7 +108,7 @@ def _get_volume_material():
     return mat
 
 
-def add_pyramid_volume(obj, face_index=-1, d=0.2, seed=None, name="Volume"):
+def add_pyramid_volume(obj, face_index=-1, d=0.2, name="Volume", rng=None):
     """Add a pyramid volume on a face of `obj` as a separate object.
 
     Args:
@@ -128,8 +128,9 @@ def add_pyramid_volume(obj, face_index=-1, d=0.2, seed=None, name="Volume"):
     parent inverse, so the pyramid stays glued to the face when the
     parent is moved, rotated or scaled.
     """
-    rng = random.Random(seed)
-
+    if rng is None:
+        rng = random.Random()
+    
     if face_index < 0:
         face_indices = faces_facing_direction(obj, (0, -1, 0), threshold=0.5)
         if face_indices:
