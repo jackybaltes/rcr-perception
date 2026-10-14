@@ -30,7 +30,7 @@ def _sample_triangle(a, b, c, rng):
     return a + (b - a) * u + (c - a) * v
 
 
-def random_point_in_triangle(base_pts, seed=None):
+def random_point_in_triangle(base_pts, rng=None):
     """Return a uniformly random point inside a triangle.
 
     Args:
@@ -40,10 +40,13 @@ def random_point_in_triangle(base_pts, seed=None):
     Returns:
         A mathutils.Vector in the same coordinate space as `base_pts`.
     """
+    if rng is None:
+        rng = random.Random()
+
     points = tuple(Vector(point) for point in base_pts)
     if len(points) != 3:
         raise ValueError("base_pts must contain exactly three vertices")
-    return _sample_triangle(*points, random.Random(seed))
+    return _sample_triangle(*points, rng)
 
 
 def faces_facing_direction(obj, direction, threshold=0.0):
@@ -108,7 +111,7 @@ def _get_volume_material():
     return mat
 
 
-def add_pyramid_volume(obj, face_index=-1, d=0.2, name="Volume", rng=None):
+def add_pyramid_volume(obj, face_index=-1, d=0.2, name="Volume", volume_material="VolumeMaterial", rng=None):
     """Add a pyramid volume on a face of `obj` as a separate object.
 
     Args:
@@ -116,9 +119,9 @@ def add_pyramid_volume(obj, face_index=-1, d=0.2, name="Volume", rng=None):
         face_index: Index of the polygon face to build the pyramid on.
         d:          Distance of the apex from the face plane, measured
                     along the face's outward normal (default 0.2 m).
-        seed:       Optional seed for reproducible point placement.
-        name:       Name of the new object (default "Volume"; Blender
-                    appends .001 etc. on name collisions).
+        name:       Name of the new object (default "Volume"; Blender appends .001 etc. on name collisions).
+        volume_material: Name of the material to use for the pyramid (default "VolumeMaterial").
+        rng:        Random number generator (default None, which creates a new one).
 
     Returns:
         The newly created pyramid object. Raises on invalid input.
@@ -156,7 +159,7 @@ def add_pyramid_volume(obj, face_index=-1, d=0.2, name="Volume", rng=None):
         # centroid of the three base points (always inside the triangle).
         normal = face.normal  # outward polygon normal in object space
         #apex = sum(base_pts, Vector()) / 3.0 + normal * d
-        apex = random_point_in_triangle(base_pts, seed=seed) + normal * d
+        apex = random_point_in_triangle(base_pts, rng) + normal * d
     finally:
         bm.free()
 
@@ -187,6 +190,8 @@ def add_pyramid_volume(obj, face_index=-1, d=0.2, name="Volume", rng=None):
 
     # Assign 'VolumeMaterial', creating it as a copy of 'WallMaterial'
     # (or a fresh empty material if that is missing) on first use.
-    pyr_obj.data.materials.append(_get_volume_material())
+    if isinstance(volume_material, str):
+        volume_material = bpy.data.materials.get(volume_material) or _get_volume_material()
+    pyr_obj.data.materials.append(volume_material)
 
     return pyr_obj

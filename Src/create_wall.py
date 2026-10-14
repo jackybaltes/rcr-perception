@@ -1,7 +1,7 @@
 import bpy
 import random
 
-def create_wall(width, height, depth, name="Wall",rng=None):  
+def create_wall(width, height, depth, name="Wall", material_name=None, volume_material="VolumeMaterial", rng=None):  
     print(f"Creating wall with width={width}, height={height}, depth={depth}, rng={rng}")  
     if rng is None:
         rng = random.Random()
@@ -15,9 +15,14 @@ def create_wall(width, height, depth, name="Wall",rng=None):
         vertex.co.z += 0.5
     wall.location = (0, -wall.dimensions.y / 2, -wall.dimensions.z / 2)
 
-    material = bpy.data.materials.get("WallMaterial")
+    if material_name is None:
+        material_name = "WallMaterial"
+    material = bpy.data.materials.get(material_name)
     if material is None:
-        material = bpy.data.materials.new(name="WallMaterial")
+        material = bpy.data.materials.new(name=material_name)
+    wall.data.materials.clear()
+    wall.data.materials.append(material)
+
     material.use_nodes = True
     nodes = material.node_tree.nodes
     links = material.node_tree.links
@@ -29,18 +34,10 @@ def create_wall(width, height, depth, name="Wall",rng=None):
 
     texcoord = nodes.new("ShaderNodeTexCoord")
     noise = nodes.new("ShaderNodeTexNoise")
-    noise.inputs["Scale"].default_value = rng.uniform(3.0, 7.0)
-    noise.inputs["Detail"].default_value = rng.uniform(2.0, 5.0)
+    noise.inputs["Scale"].default_value = rng.uniform(4.0, 10.0)
+    noise.inputs["Detail"].default_value = rng.uniform(4.0, 8.0)
+    noise.inputs["Roughness"].default_value = rng.uniform(0.65, 0.85)
     links.new(texcoord.outputs["Generated"], noise.inputs["Vector"])
-
-    grain = nodes.new("ShaderNodeTexWave")
-    grain.wave_type = "BANDS"
-    grain.bands_direction = "X"
-    grain.inputs["Scale"].default_value = rng.uniform(3.0, 6.0)
-    grain.inputs["Distortion"].default_value = rng.uniform(2.0, 5.0)
-    grain.inputs["Detail"].default_value = rng.uniform(2.0, 4.0)
-    links.new(texcoord.outputs["Generated"], grain.inputs["Vector"])
-    links.new(noise.outputs["Fac"], grain.inputs["Distortion"])
 
     ramp = nodes.new("ShaderNodeValToRGB")
     ramp.color_ramp.elements[0].color = (
@@ -57,7 +54,7 @@ def create_wall(width, height, depth, name="Wall",rng=None):
         rng.uniform(0.012, 0.04), 1.0,
     )
     ramp.color_ramp.elements[1].position = 0.72
-    links.new(grain.outputs["Color"], ramp.inputs["Fac"])
+    links.new(noise.outputs["Fac"], ramp.inputs["Fac"])
     links.new(ramp.outputs["Color"], shader.inputs["Base Color"])
 
     bump = nodes.new("ShaderNodeBump")
