@@ -1,7 +1,12 @@
-import bpy
-import random
 
-def create_wall(width, height, depth, name="Wall", material_name=None, volume_material="VolumeMaterial", rng=None):  
+# pyright: reportMissingImports=false
+import random  # noqa: I001
+
+import bpy
+
+
+
+def create_wall(width, height, depth, name="Wall", material_name=None, volume_material="VolumeMaterial", rng=None):
     print(f"Creating wall with width={width}, height={height}, depth={depth}, rng={rng}")  
     if rng is None:
         rng = random.Random()
@@ -9,7 +14,7 @@ def create_wall(width, height, depth, name="Wall", material_name=None, volume_ma
     bpy.ops.mesh.primitive_cube_add(size=1)
     wall = bpy.context.object
     wall.name = name
-    wall.dimensions = (width/2, depth/2, height/2)
+    wall.dimensions.set(width/2, depth/2, height/2)
     for vertex in wall.data.vertices:
         vertex.co.y += 0.5
         vertex.co.z += 0.5
@@ -58,7 +63,7 @@ def create_wall(width, height, depth, name="Wall", material_name=None, volume_ma
     links.new(ramp.outputs["Color"], shader.inputs["Base Color"])
 
     bump = nodes.new("ShaderNodeBump")
-    bump.inputs["Strength"].default_value = 0.18
+    bump.inputs["Strength"].default_value = 0.75
     bump.inputs["Distance"].default_value = 0.08
     links.new(noise.outputs["Fac"], bump.inputs["Height"])
     links.new(bump.outputs["Normal"], shader.inputs["Normal"])

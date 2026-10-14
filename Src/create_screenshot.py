@@ -10,9 +10,20 @@
 
 import os
 import tempfile
+import typing
 
-import bpy
-import numpy as np
+if typing.TYPE_CHECKING:
+    import bpy  # type: ignore[import-not-found]
+else:
+    try:
+        import bpy
+    except ImportError:  # pragma: no cover - only used when run outside Blender.
+        bpy = None
+
+try:
+    import numpy as np  # type: ignore[import-not-found]
+except ImportError:  # NumPy is provided by Blender, not necessarily system Python.
+    np = None
 
 
 def create_screenshot(output_path=None,
@@ -33,6 +44,9 @@ def create_screenshot(output_path=None,
     Returns:
         The absolute path of the stitched image.
     """
+    if np is None:
+        raise RuntimeError("NumPy is required to stitch the renders.")
+
     if output_path is None:
         output_path = os.path.join(tempfile.gettempdir(),
                                    "screenshot_side_by_side.png")

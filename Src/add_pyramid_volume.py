@@ -13,11 +13,13 @@
 # triangle's centroid), and the three side triangles connecting the
 # base edge pairs to the apex are created.
 
+# pyright: reportMissingImports=false
+
 import random
 
-import bpy
 import bmesh
-from mathutils import Vector, Matrix
+import bpy
+from mathutils import Matrix, Vector
 
 
 def _sample_triangle(a, b, c, rng):

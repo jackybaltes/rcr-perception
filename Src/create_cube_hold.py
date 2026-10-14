@@ -1,7 +1,9 @@
-import bpy
-import bmesh
 import random
-from mathutils import Vector
+
+# pyright: reportMissingImports=false
+import bmesh
+import bpy
+from mathutils import Quaternion, Vector
 
 
 def create_cube_hold(
@@ -259,7 +261,7 @@ def create_cube_hold(
     return hold_obj
 
 
-def select_random_coordinate(face_obj, face_index, seed=None):
+def select_random_coordinate(face_obj, face_index, rng=None):
     """Return a uniformly random world-space point inside a mesh face."""
     if face_obj.type != 'MESH':
         raise TypeError("face_obj must be a mesh object")
@@ -274,11 +276,11 @@ def select_random_coordinate(face_obj, face_index, seed=None):
     mesh.calc_loop_triangles()
     triangles = []
     total_area = 0.0
-
+    
     for triangle in mesh.loop_triangles:
         if triangle.polygon_index != face_index:
             continue
-
+        
         points = [
             face_obj.matrix_world @ mesh.vertices[index].co
             for index in triangle.vertices
@@ -293,7 +295,8 @@ def select_random_coordinate(face_obj, face_index, seed=None):
     if not triangles:
         raise ValueError("face has no positive-area triangles")
 
-    rng = random.Random(seed)
+    if not rng:
+        rng = random.Random()
     selection = rng.uniform(0.0, total_area)
     for points, area in triangles:
         selection -= area
@@ -304,10 +307,12 @@ def select_random_coordinate(face_obj, face_index, seed=None):
                 u, v = 1.0 - u, 1.0 - v
             return first + (second - first) * u + (third - first) * v
 
+    points = triangles[-1][0]
+    assert len(points) > 0
     return points[0].copy()
 
 
-def add_hold_to_face(hold_obj, face_obj, face_index, pt=None, seed=None):
+def add_hold_to_face(hold_obj, face_obj, face_index, pt=None, angle=0.0,rng=None):
     """Place a hold on a mesh face, with its local -Y axis facing outward."""
     if hold_obj.type != 'MESH' or face_obj.type != 'MESH':
         raise TypeError("hold_obj and face_obj must be mesh objects")
@@ -321,10 +326,14 @@ def add_hold_to_face(hold_obj, face_obj, face_index, pt=None, seed=None):
     if not hold_obj.data.vertices:
         raise ValueError("hold_obj must have mesh vertices")
 
+    if not rng:
+        rng = random.Random()
+
     face = face_obj.data.polygons[face_index]
     normal_matrix = face_obj.matrix_world.to_3x3().inverted().transposed()
     face_normal = (normal_matrix @ face.normal).normalized()
-    rotation = Vector((0.0, -1.0, 0.0)).rotation_difference(face_normal)
+    rotation = hold_obj.rotation_euler.to_quaternion() @ Quaternion((0.0, 0.0, 1.0), angle)
+    rotation = Vector((0.0, -1.0, 0.0)).rotation_difference(face_normal) @ rotation
 
     rear_y = max(vertex.co.y for vertex in hold_obj.data.vertices)
     rear_center = Vector((0.0, rear_y, 0.0))
@@ -334,7 +343,7 @@ def add_hold_to_face(hold_obj, face_obj, face_index, pt=None, seed=None):
         rear_center.z * hold_obj.scale.z,
     ))
     face_point = pt if pt is not None else select_random_coordinate(
-        face_obj, face_index, seed=seed
+        face_obj, face_index, rng
     )
 
     hold_obj.rotation_mode = 'QUATERNION'
