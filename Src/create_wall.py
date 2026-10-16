@@ -3,7 +3,6 @@
 import random  # noqa: I001
 
 import bpy
-import materials  # noqa: I001
 
 
 def create_wall_mesh(width, height, depth, name="Wall", material=None, rng=None):
