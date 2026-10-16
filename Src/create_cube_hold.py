@@ -312,7 +312,7 @@ def select_random_coordinate(face_obj, face_index, rng=None):
     return points[0].copy()
 
 
-def add_hold_to_face(hold_obj, face_obj, face_index, pt=None, angle=0.0,rng=None):
+def add_hold_to_face(hold_obj, face_obj, face_index, pt=None, angle=0.0, rng=None):
     """Place a hold on a mesh face, with its local -Y axis facing outward."""
     if hold_obj.type != 'MESH' or face_obj.type != 'MESH':
         raise TypeError("hold_obj and face_obj must be mesh objects")
