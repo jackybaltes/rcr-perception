@@ -2,10 +2,20 @@
 # pyright: reportMissingImports=false
 import random  # noqa: I001
 
-import bpy
+try:
+    import bpy
+except ImportError:  # pragma: no cover - only exercised when Blender is absent.
+    bpy = None
 
 
-def create_wall_mesh(width, height, depth, name="Wall", material=None, rng=None):
+def _require_blender():
+    if bpy is None:
+        raise RuntimeError("Blender is required for wall generation; run this script inside Blender.")
+
+
+def create_wall_mesh(width, height, depth, name="Wall", rng=None):
+    _require_blender()
+
     print(f"Creating wall with width={width}, height={height}, depth={depth}, rng={rng}")  
     if rng is None:
         rng = random.Random()
@@ -18,10 +28,6 @@ def create_wall_mesh(width, height, depth, name="Wall", material=None, rng=None)
         vertex.co.y += 0.5
         vertex.co.z += 0.5
     wall.location = (0, -wall.dimensions[1] / 2, -wall.dimensions[2] / 2)
-
-    if material is not None:
-        wall.data.materials.clear()
-        wall.data.materials.append(material)
 
     wall.location = (0, 0, 0)
     bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)

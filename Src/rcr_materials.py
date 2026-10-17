@@ -2,7 +2,15 @@
 
 import random
 
-import bpy
+try:
+    import bpy
+except ImportError:  # pragma: no cover - only exercised when Blender is absent.
+    bpy = None
+
+
+def _require_blender():
+    if bpy is None:
+        raise RuntimeError("Blender is required for material generation; run this script inside Blender.")
 
 def hsv_to_rgb(h, s, v):
     """
@@ -43,6 +51,8 @@ def hsv_to_rgb(h, s, v):
         return v, p, q
 
 def create_rock_material_with_noise(name="MatRock", color_hsv_limits=None, roughness=0.8, rng=None, ):
+    _require_blender()
+
     if rng is None:
         rng = random.Random()
     
@@ -72,14 +82,19 @@ def create_rock_material_with_noise(name="MatRock", color_hsv_limits=None, rough
     # color.inputs["Saturation"].default_value = rng.uniform(color_limits[0][1], color_limits[1][1])
     # color.inputs["Value"].default_value = rng.uniform(color_limits[0][2], color_limits[1][2])
 
-    hsv = (
-        rng.uniform(color_hsv_limits[0][0], color_hsv_limits[1][0]),
-        rng.uniform(color_hsv_limits[0][1], color_hsv_limits[1][1]),
-        rng.uniform(color_hsv_limits[0][2], color_hsv_limits[1][2])
-    )
+    mhsv = [0.5, 0.5, 0.5]
+
+    for i in range(3):
+        if color_hsv_limits[0][i] < color_hsv_limits[1][i]:
+            val = rng.uniform(color_hsv_limits[0][i], color_hsv_limits[1][i])
+        else:
+            val = color_hsv_limits[0][i]
+        mhsv[i] = val
+
+    print(f"Creating rock material {name} with HSV limits {color_hsv_limits}, roughness={roughness}, rng={rng}, selected HSV={mhsv} rgb={hsv_to_rgb(*mhsv)}")
 
     color = nodes.new("ShaderNodeRGB")
-    color.outputs["Color"].default_value = (*hsv_to_rgb(*hsv), 1.0)  # Red    
+    color.outputs["Color"].default_value = (*hsv_to_rgb(*mhsv), 1.0)  # Red    
     links.new(color.outputs["Color"], shader.inputs["Base Color"])
 
     bump = nodes.new("ShaderNodeBump")
@@ -90,10 +105,16 @@ def create_rock_material_with_noise(name="MatRock", color_hsv_limits=None, rough
 
     return material
 
-def create_hold_material(name="HoldMaterial", color_hsv_limits=((0.0, 0.07, 0.04), (0.18, 1.0, 0.5)), roughness=0.4, rng=None):
-    mat = create_rock_material_with_noise(name, color_hsv_limits=(color_hsv_limits), roughness=roughness, rng=rng)
+def create_hold_material(name="HoldMaterial", 
+                         color_hsv=(0.05,0.95,0.90), 
+                         limit = 0.0,
+                         roughness=0.2, 
+                         rng=None):
+    limits = ((max(0,color_hsv[0]-limit), max(0,color_hsv[1]-limit), max(0,color_hsv[2]-limit)),
+              (min(1,color_hsv[0]+limit), min(1,color_hsv[1]+limit), min(1,color_hsv[2]+limit)))
+    
+    mat = create_rock_material_with_noise(name, color_hsv_limits=limits, roughness=roughness, rng=rng)
     return mat
-
 
 # hold_material = bpy.data.materials.get("HoldMaterial")
 #     if hold_material is None:

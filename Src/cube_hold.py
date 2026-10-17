@@ -1,9 +1,29 @@
+import math
 import random
 
 # pyright: reportMissingImports=false
-import bmesh
-import bpy
-from mathutils import Quaternion, Vector
+try:
+    import bmesh
+except ImportError:  # pragma: no cover - only exercised when Blender is absent.
+    bmesh = None
+
+try:
+    import bpy
+except ImportError:  # pragma: no cover - only exercised when Blender is absent.
+    bpy = None
+
+try:
+    from mathutils import Quaternion, Vector
+except ImportError:  # pragma: no cover - only exercised when Blender is absent.
+    Quaternion = None
+    Vector = None
+
+import rcr_materials
+
+
+def _require_blender():
+    if bpy is None or bmesh is None:
+        raise RuntimeError("Blender is required for mesh generation; run this script inside Blender.")
 
 
 def create_cube_hold_center(
@@ -33,8 +53,74 @@ def create_cube_hold_center(
         back_wall_mm=back_wall_mm,
         bevel_radius_mm=bevel_radius_mm,
         bevel_segments=bevel_segments,
+        rng=rng
     )
+    return h
 
+
+def create_cube_hold_right(
+    name="CubeHoldRight",
+    hold_width_mm=200.0,
+    hold_height_mm=40.0,
+    hold_depth_mm=40.0,
+    hole_width_mm=190.0,
+    hole_height_mm=30.0,
+    hole_depth_mm=30.0,
+    back_wall_mm=1.0,
+    bevel_radius_mm=4.0,
+    bevel_segments=4,
+    rng=None,
+):
+    if rng is None:
+        rng = random.Random()
+
+    h = create_cube_hold(
+        name=name,
+        hold_width_mm=hold_width_mm,
+        hold_height_mm=hold_height_mm,
+        hold_depth_mm=hold_depth_mm,
+        hole_width_mm=hole_width_mm,
+        hole_height_mm=hole_height_mm,
+        hole_depth_mm=hole_depth_mm,
+        back_wall_mm=back_wall_mm,
+        bevel_radius_mm=bevel_radius_mm,
+        bevel_segments=bevel_segments,
+        rng=rng
+    )
+    h.rotation_euler.rotate_axis('Y', math.radians(45.0))
+    return h
+
+def create_cube_hold_left(
+    name="CubeHoldLeft",
+    hold_width_mm=200.0,
+    hold_height_mm=40.0,
+    hold_depth_mm=40.0,
+    hole_width_mm=190.0,
+    hole_height_mm=30.0,
+    hole_depth_mm=30.0,
+    back_wall_mm=1.0,
+    bevel_radius_mm=4.0,
+    bevel_segments=4,
+    rng=None,
+):
+    if rng is None:
+        rng = random.Random()
+
+    h = create_cube_hold(
+        name=name,
+        hold_width_mm=hold_width_mm,
+        hold_height_mm=hold_height_mm,
+        hold_depth_mm=hold_depth_mm,
+        hole_width_mm=hole_width_mm,
+        hole_height_mm=hole_height_mm,
+        hole_depth_mm=hole_depth_mm,
+        back_wall_mm=back_wall_mm,
+        bevel_radius_mm=bevel_radius_mm,
+        bevel_segments=bevel_segments,
+        rng=rng
+    )
+    h.rotation_euler.rotate_axis('Y', math.radians(-45.0))
+    return h
 
 def create_cube_hold(
     name="CubeHold",
@@ -49,6 +135,8 @@ def create_cube_hold(
     bevel_segments=4,
     rng = None
 ):
+
+    _require_blender()
 
     if rng is None:
         rng = random.Random()
@@ -257,14 +345,6 @@ def create_cube_hold(
         cutter_obj,
         do_unlink=True,
     )
-    
-    if hold_obj.data.materials:
-        hold_obj.data.materials[0] = hold_material
-    else:
-        hold_obj.data.materials.append(hold_material)
-    hold_obj.active_material_index = 0
-    for poly in hold_obj.data.polygons:
-        poly.material_index = 0
 
     # --------------------------------------------------
     # Smooth shading
@@ -317,7 +397,7 @@ def select_random_coordinate(face_obj, face_index, rng=None):
     if not triangles:
         raise ValueError("face has no positive-area triangles")
 
-    if not rng:
+    if rng is None:
         rng = random.Random()
     selection = rng.uniform(0.0, total_area)
     for points, area in triangles:
@@ -348,13 +428,13 @@ def add_hold_to_face(hold_obj, face_obj, face_index, pt=None, angle=0.0, rng=Non
     if not hold_obj.data.vertices:
         raise ValueError("hold_obj must have mesh vertices")
 
-    if not rng:
+    if rng is None:
         rng = random.Random()
 
     face = face_obj.data.polygons[face_index]
     normal_matrix = face_obj.matrix_world.to_3x3().inverted().transposed()
     face_normal = (normal_matrix @ face.normal).normalized()
-    rotation = hold_obj.rotation_euler.to_quaternion() @ Quaternion((0.0, -1, 0), angle)
+    rotation = Quaternion((0.0, -1, 0), angle) @ hold_obj.rotation_euler.to_quaternion() 
     rotation = Vector((0.0, -1.0, 0.0)).rotation_difference(face_normal) @ rotation
 
     rear_y = max(vertex.co.y for vertex in hold_obj.data.vertices)
