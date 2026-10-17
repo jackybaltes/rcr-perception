@@ -27,46 +27,61 @@ def reload(module):
 p = get_blend_file_path()
 add_module_dir(p / ".." / "Src")
 
-import add_pyramid_volume
-import create_screenshot
-import create_cube_hold
-import create_wall
-import rock_materials
+import volume
+import screenshot
+import cube_hold
+import wall
+import rcr_materials
 
 seed = 42
 rng = random.Random(seed)
 
+wall_mat = rcr_materials.create_rock_material_with_noise("MatRock", color_hsv_limits=((0.14, 0.045, 0.012), (0.38, 0.31, 0.24)), rng=rng)
+hold_center_mat = rcr_materials.create_hold_material("MatHold_Center", color_hsv_limits=((0.0, 0.75, 0.3), (0.18, 1.0, 0.7)), rng=rng)
+hold_right_mat = rcr_materials.create_hold_material("MatHold_Right", color_hsv_limits=((0.3, 0.75, 0.3), (0.48, 1.0, 0.7)), rng=rng)
+hold_left_mat = rcr_materials.create_hold_material("MatHold_Left", color_hsv_limits=((0.6, 0.75, 0.3), (0.78, 1.0, 0.7)), rng=rng)
 
 def test1(name):
     wall = bpy.data.objects[name]
-    faces = add_pyramid_volume.faces_facing_direction(wall, (0,-1,0), 0.5)
+    faces = volume.faces_facing_direction(wall, (0,-1,0), 0.5)
     print(f"Faces facing forward {faces}")
     if faces:
         for i in range(10):
-            hold = create_cube_hold.create_cube_hold()
+            hold = cube_hold.create_cube_hold()
             face_index = random.choice(faces)
-            pt = create_cube_hold.select_random_coordinate(wall, face_index)
-            create_cube_hold.add_hold_to_face(hold, wall, face_index, pt)
+            pt = cube_hold.select_random_coordinate(wall, face_index)
+            cube_hold.add_hold_to_face(hold, wall, face_index, pt)
     else:
         print("No faces found")
                     
 
 def test2():
     WALL_DIMENSIONS=(10.0,5.0, 0.05)
-    mat = rock_materials.create_rock_material_with_noise("MatRock", color_limits=((0.14, 0.045, 0.012), (0.38, 0.31, 0.24)), rng=rng)
-    wall = create_wall.create_wall_mesh(*WALL_DIMENSIONS, "TestWall", mat)
+    mat = rcr_materials.create_rock_material_with_noise("MatRock", color_limits=((0.14, 0.045, 0.012), (0.38, 0.31, 0.24)), rng=rng)
+    wall = wall.create_wall_mesh(*WALL_DIMENSIONS, "TestWall", mat)
     return wall
 
 def test3(name):
-    wall = bpy.data.objects["Wall"]
-    faces = add_pyramid_volume.faces_facing_direction(wall, (0,-1,0), 0.5)
+    wall = bpy.data.objects[name]
+    faces = volume.faces_facing_direction(wall, (0,-1,0), 0.5)
     print(f"Faces facing forward {faces}")
     if faces:
         for i in range(10):
-            hold = create_cube_hold.create_cube_hold()
+            r = rng.random()
+            if r < 0.33:
+                hold = cube_hold.create_cube_hold_center()
+            elif r < 0.66:
+                hold = cube_hold.create_cube_hold_right()
+            else:
+                hold = cube_hold.create_cube_hold_left()
+                
+
+            hold = cube_hold.create_cube_hold()
+            mat = rcr_materials.create_rock_material_with_noise("MatCubeHold", color_hsv_limits=((0.14, 0.045, 0.012), (0.38, 0.31, 0.24)), rng=rng)
+            
             face_index = random.choice(faces)
-            pt = create_cube_hold.select_random_coordinate(wall, face_index)
-            create_cube_hold.add_hold_to_face(hold, wall, face_index, pt)
+            pt = cube_hold.select_random_coordinate(wall, face_index)
+            cube_hold.add_hold_to_face(hold, wall, face_index, pt, random.choice([-45.0/180.0*math.pi, 0.0, 45.0/180.0*math.pi]))
     else:
         print("No faces found")
 
