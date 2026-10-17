@@ -36,6 +36,10 @@ import rcr_materials
 seed = 42
 rng = random.Random(seed)
 
+wall_mat = rcr_materials.create_rock_material_with_noise("MatRock", color_hsv_limits=((0.14, 0.045, 0.012), (0.38, 0.31, 0.24)), rng=rng)
+hold_center_mat = rcr_materials.create_hold_material("MatHold_Center", color_hsv_limits=((0.0, 0.75, 0.3), (0.18, 1.0, 0.7)), rng=rng)
+hold_right_mat = rcr_materials.create_hold_material("MatHold_Right", color_hsv_limits=((0.3, 0.75, 0.3), (0.48, 1.0, 0.7)), rng=rng)
+hold_left_mat = rcr_materials.create_hold_material("MatHold_Left", color_hsv_limits=((0.6, 0.75, 0.3), (0.78, 1.0, 0.7)), rng=rng)
 
 def test1(name):
     wall = bpy.data.objects[name]
@@ -63,7 +67,18 @@ def test3(name):
     print(f"Faces facing forward {faces}")
     if faces:
         for i in range(10):
+            r = rng.random()
+            if r < 0.33:
+                hold = cube_hold.create_cube_hold_center()
+            elif r < 0.66:
+                hold = cube_hold.create_cube_hold_right()
+            else:
+                hold = cube_hold.create_cube_hold_left()
+                
+
             hold = cube_hold.create_cube_hold()
+            mat = rcr_materials.create_rock_material_with_noise("MatCubeHold", color_hsv_limits=((0.14, 0.045, 0.012), (0.38, 0.31, 0.24)), rng=rng)
+            
             face_index = random.choice(faces)
             pt = cube_hold.select_random_coordinate(wall, face_index)
             cube_hold.add_hold_to_face(hold, wall, face_index, pt, random.choice([-45.0/180.0*math.pi, 0.0, 45.0/180.0*math.pi]))

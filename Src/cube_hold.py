@@ -6,6 +6,36 @@ import bpy
 from mathutils import Quaternion, Vector
 
 
+def create_cube_hold_center(
+    name="CubeHoldCenter",
+    hold_width_mm=80.0,
+    hold_height_mm=40.0,
+    hold_depth_mm=40.0,
+    hole_width_mm=70.0,
+    hole_height_mm=30.0,
+    hole_depth_mm=30.0,
+    back_wall_mm=1.0,
+    bevel_radius_mm=4.0,
+    bevel_segments=4,
+    rng=None,
+):
+    if rng is None:
+        rng = random.Random()
+
+    h = create_cube_hold(
+        name=name,
+        hold_width_mm=hold_width_mm,
+        hold_height_mm=hold_height_mm,
+        hold_depth_mm=hold_depth_mm,
+        hole_width_mm=hole_width_mm,
+        hole_height_mm=hole_height_mm,
+        hole_depth_mm=hole_depth_mm,
+        back_wall_mm=back_wall_mm,
+        bevel_radius_mm=bevel_radius_mm,
+        bevel_segments=bevel_segments,
+    )
+
+
 def create_cube_hold(
     name="CubeHold",
     hold_width_mm=80.0,
@@ -17,7 +47,11 @@ def create_cube_hold(
     back_wall_mm=1.0,
     bevel_radius_mm=4.0,
     bevel_segments=4,
+    rng = None
 ):
+
+    if rng is None:
+        rng = random.Random()
 
     MM = 0.001
 
@@ -223,19 +257,7 @@ def create_cube_hold(
         cutter_obj,
         do_unlink=True,
     )
-
-    hold_material = bpy.data.materials.get("HoldMaterial")
-    if hold_material is None:
-        hold_material = bpy.data.materials.new(name="HoldMaterial")
-        hold_material.diffuse_color = (0.8, 0.0, 0.0, 1.0)
-        hold_material.roughness = 0.8
-        hold_material.use_nodes = True
-        principled = hold_material.node_tree.nodes.get("Principled BSDF")
-        if principled is not None:
-            principled.inputs["Base Color"].default_value = (
-                1.0, 0.0, 0.0, 1.0
-            )
-            principled.inputs["Roughness"].default_value = 0.8
+    
     if hold_obj.data.materials:
         hold_obj.data.materials[0] = hold_material
     else:
@@ -332,7 +354,7 @@ def add_hold_to_face(hold_obj, face_obj, face_index, pt=None, angle=0.0, rng=Non
     face = face_obj.data.polygons[face_index]
     normal_matrix = face_obj.matrix_world.to_3x3().inverted().transposed()
     face_normal = (normal_matrix @ face.normal).normalized()
-    rotation = hold_obj.rotation_euler.to_quaternion() @ Quaternion((0.0, 0.0, 1.0), angle)
+    rotation = hold_obj.rotation_euler.to_quaternion() @ Quaternion((0.0, -1, 0), angle)
     rotation = Vector((0.0, -1.0, 0.0)).rotation_difference(face_normal) @ rotation
 
     rear_y = max(vertex.co.y for vertex in hold_obj.data.vertices)
@@ -356,3 +378,4 @@ def add_hold_to_face(hold_obj, face_obj, face_index, pt=None, angle=0.0, rng=Non
     hold_obj.matrix_world = world_matrix
 
     return hold_obj
+
