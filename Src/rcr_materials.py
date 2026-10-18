@@ -50,7 +50,7 @@ def hsv_to_rgb(h, s, v):
     else:
         return v, p, q
 
-def create_rock_material_with_noise(name="MatRock", color_hsv_limits=None, roughness=0.8, rng=None, ):
+def create_rock_material_with_noise(name="MatRock", color_hsv_limits=None, p_noise=None, rng=None):
     _require_blender()
 
     if rng is None:
@@ -70,17 +70,13 @@ def create_rock_material_with_noise(name="MatRock", color_hsv_limits=None, rough
     shader = nodes.new("ShaderNodeBsdfPrincipled")
     links.new(shader.outputs["BSDF"], output.inputs["Surface"])
 
-    texcoord = nodes.new("ShaderNodeTexCoord")
-    noise = nodes.new("ShaderNodeTexNoise")
-    noise.inputs["Scale"].default_value = rng.uniform(4.0, 10.0)
-    noise.inputs["Detail"].default_value = rng.uniform(4.0, 8.0)
-    noise.inputs["Roughness"].default_value = rng.uniform(max(0,roughness-0.1), min(1,roughness+0.1))
-    links.new(texcoord.outputs["Generated"], noise.inputs["Vector"])
-
-    # color = nodes.new("ShaderNodeHueSaturation")
-    # color.inputs["Hue"].default_value = rng.uniform(color_limits[0][0], color_limits[1][0])
-    # color.inputs["Saturation"].default_value = rng.uniform(color_limits[0][1], color_limits[1][1])
-    # color.inputs["Value"].default_value = rng.uniform(color_limits[0][2], color_limits[1][2])
+    if p_noise:
+        texcoord = nodes.new("ShaderNodeTexCoord")
+        noise = nodes.new("ShaderNodeTexNoise")
+        noise.inputs["Scale"].default_value = rng.uniform(p_noise[0][0], p_noise[0][1])
+        noise.inputs["Detail"].default_value = rng.uniform(p_noise[1][0], p_noise[1][1])
+        noise.inputs["Roughness"].default_value = rng.uniform(max(0,p_noise[2][0]), min(1,p_noise[2][1]))
+        links.new(texcoord.outputs["Generated"], noise.inputs["Vector"])
 
     mhsv = [0.5, 0.5, 0.5]
 
@@ -91,17 +87,18 @@ def create_rock_material_with_noise(name="MatRock", color_hsv_limits=None, rough
             val = color_hsv_limits[0][i]
         mhsv[i] = val
 
-    print(f"Creating rock material {name} with HSV limits {color_hsv_limits}, roughness={roughness}, rng={rng}, selected HSV={mhsv} rgb={hsv_to_rgb(*mhsv)}")
+    print(f"Creating rock material {name} with HSV limits {color_hsv_limits}, rng={rng}, selected HSV={mhsv} rgb={hsv_to_rgb(*mhsv)}")
 
     color = nodes.new("ShaderNodeRGB")
     color.outputs["Color"].default_value = (*hsv_to_rgb(*mhsv), 1.0)  # Red    
     links.new(color.outputs["Color"], shader.inputs["Base Color"])
 
-    bump = nodes.new("ShaderNodeBump")
-    bump.inputs["Strength"].default_value = 0.75
-    bump.inputs["Distance"].default_value = 0.08
-    links.new(noise.outputs["Fac"], bump.inputs["Height"])
-    links.new(bump.outputs["Normal"], shader.inputs["Normal"])
+    if p_noise:
+        bump = nodes.new("ShaderNodeBump")
+        bump.inputs["Strength"].default_value = p_noise[3][0]
+        bump.inputs["Distance"].default_value = p_noise[3][1]
+        links.new(noise.outputs["Fac"], bump.inputs["Height"])
+        links.new(bump.outputs["Normal"], shader.inputs["Normal"])
 
     return material
 
@@ -113,7 +110,7 @@ def create_hold_material(name="HoldMaterial",
     limits = ((max(0,color_hsv[0]-limit), max(0,color_hsv[1]-limit), max(0,color_hsv[2]-limit)),
               (min(1,color_hsv[0]+limit), min(1,color_hsv[1]+limit), min(1,color_hsv[2]+limit)))
     
-    mat = create_rock_material_with_noise(name, color_hsv_limits=limits, roughness=roughness, rng=rng)
+    mat = create_rock_material_with_noise(name, color_hsv_limits=limits, p_noise=None, rng=rng)
     return mat
 
 # hold_material = bpy.data.materials.get("HoldMaterial")

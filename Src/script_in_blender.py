@@ -44,37 +44,38 @@ import rcr_materials
 seed = 42
 rng = random.Random(seed)
 
-wall_mat = rcr_materials.create_rock_material_with_noise("MatRock", color_hsv_limits=((0.14, 0.045, 0.012), (0.38, 0.31, 0.24)), rng=rng)
-hold_center_mat = rcr_materials.create_hold_material("MatHold_Center", color_hsv_limits=((0.0, 0.75, 0.3), (0.18, 1.0, 0.7)), rng=rng)
-hold_right_mat = rcr_materials.create_hold_material("MatHold_Right", color_hsv_limits=((0.3, 0.75, 0.3), (0.48, 1.0, 0.7)), rng=rng)
-hold_left_mat = rcr_materials.create_hold_material("MatHold_Left", color_hsv_limits=((0.6, 0.75, 0.3), (0.78, 1.0, 0.7)), rng=rng)
+WALL_DIMENSIONS=(10.0,5.0, 0.05)
+
+MAT_WALL = rcr_materials.create_rock_material_with_noise("MatRock", color_hsv_limits=((0.35, 0.1, 0.1), (0.65, 0.4, 0.5)), p_noise=((10, 20), (2, 10), (0.5, 0.9), (0.1, 0.9)), rng=rng)
+MAT_VOLUME = rcr_materials.create_rock_material_with_noise("MatVolume", color_hsv_limits=((0.5, 0.1, 0.1), (0.85, 0.4, 0.5)), p_noise=((10, 20), (2, 10), (0.5, 0.9), (0.1, 0.9)), rng=rng)
+MAT_CENTER = rcr_materials.create_hold_material("MatCubeHold_Center", color_hsv=(0.02, 0.9, 0.6), limit=0.001, rng=rng) 
+MAT_RIGHT = rcr_materials.create_hold_material("MatCubeHold_Right", color_hsv=(0.33, 0.8, 0.8), limit=0.025, rng=rng)
+MAT_LEFT = rcr_materials.create_hold_material("MatCubeHold_Left", color_hsv=(0.66, 0.8, 0.8), limit=0.025, rng=rng)
+
+WALL_NAME = "TestWall"
 
 def test1(name):
-    wall = bpy.data.objects[name]
-    faces = volume.faces_facing_direction(wall, (0,-1,0), 0.5)
-    print(f"Faces facing forward {faces}")
-    if faces:
-        for i in range(10):
-            hold = cube_hold.create_cube_hold()
-            face_index = random.choice(faces)
-            pt = cube_hold.select_random_coordinate(wall, face_index)
-            cube_hold.add_hold_to_face(hold, wall, face_index, pt)
-    else:
-        print("No faces found")
-
-MAT_WALL = rcr_materials.create_rock_material_with_noise("MatRock", color_hsv_limits=((0.35, 0.1, 0.01), (0.65, 0.4, 0.05)), rng=rng)
-MAT_CENTER = rcr_materials.create_hold_material("MatCubeHold", color_hsv=(0.5, 0.8, 0.8), limit=0.05, rng=rng) 
-MAT_RIGHT = rcr_materials.create_hold_material("MatHold_Right", color_hsv=(0.18, 0.8, 0.8), limit=0.025, rng=rng)
-MAT_LEFT = rcr_materials.create_hold_material("MatHold_Left", color_hsv=(0.45, 0.8, 0.8), limit=0.025, rng=rng)
-
-def test2():
-    WALL_DIMENSIONS=(10.0,5.0, 0.05)
     mat = MAT_WALL
-    w = wall.create_wall_mesh(*WALL_DIMENSIONS, "TestWall", rng=rng)
+    w = wall.create_wall_mesh(*WALL_DIMENSIONS, name, rng=rng)
     if mat is not None:
         w.data.materials.clear()
         w.data.materials.append(mat)
     return w
+
+def test2(name):
+    wall = bpy.data.objects[name]
+    faces = volume.faces_facing_direction(wall, (0,-1,0), 0.5)
+    print(f"Faces facing forward {faces}")
+    if faces:
+        for i in range(3):
+            vol = volume.add_pyramid_volume(wall, name=f"Volume_{i}", rng=rng)
+            mat = MAT_VOLUME
+            if mat is not None:
+                vol.data.materials.clear()
+                vol.data.materials.append(mat)
+    else:
+        print("No faces found")
+
 
 def test3(name):
     wall = bpy.data.objects[name]
@@ -84,13 +85,13 @@ def test3(name):
         for i in range(10):
             r = rng.random()
             if r < 0.33:
-                hold = cube_hold.create_cube_hold_center("HoldCenter", rng=rng)
+                hold = cube_hold.create_cube_hold_center(f"HoldCenter_{i}", rng=rng)
                 mat = MAT_CENTER
             elif r < 0.66:
-                hold = cube_hold.create_cube_hold_right("HoldRight", rng=rng)
+                hold = cube_hold.create_cube_hold_right(f"HoldRight_{i}", rng=rng)
                 mat = MAT_RIGHT
             else:
-                hold = cube_hold.create_cube_hold_left("HoldLeft", rng=rng)
+                hold = cube_hold.create_cube_hold_left(f"HoldLeft_{i}", rng=rng)
                 mat = MAT_LEFT
             if mat is not None:
                 hold.data.materials.clear()
@@ -101,5 +102,64 @@ def test3(name):
     else:
         print("No faces found")
 
+def _world_bounding_sphere(obj):
+    corners = [
+        obj.matrix_world @ mathutils.Vector(corner)
+        for corner in obj.bound_box
+    ]
+    center = sum(corners, mathutils.Vector()) / len(corners)
+    radius = max((corner - center).length for corner in corners)
+    return center, radius
 
 
+def test4(name, NN=10):
+    root = bpy.data.objects[name]
+    hierarchy = [root, *root.children_recursive]
+    possible_vols = []
+    hold_spheres = []
+    for obj in hierarchy:
+        if obj.type == 'MESH' and "Hold" in obj.name:
+            hold_spheres.append(_world_bounding_sphere(obj))
+        if obj.type == 'MESH' and obj.visible_get() and "Hold" not in obj.name:
+            faces = volume.faces_facing_direction(obj, (0, -1, 0), threshold=0.25)
+            if faces:
+                for f in faces:
+                    possible_vols.append((obj, f))
+    print(f"Found {len(possible_vols)} volumes facing forward in hierarchy of {name}")
+    if NN > 0 and not possible_vols:
+        raise ValueError(f"No forward-facing volume faces found in hierarchy of {name}")
+    for i in range(NN):
+        r = rng.random()
+        if r < 0.33:
+            hold = cube_hold.create_cube_hold_center(f"HoldCenter_{i}", rng=rng)
+            mat = MAT_CENTER
+        elif r < 0.66:
+            hold = cube_hold.create_cube_hold_right(f"HoldRight_{i}", rng=rng)
+            mat = MAT_RIGHT
+        else:
+            hold = cube_hold.create_cube_hold_left(f"HoldLeft_{i}", rng=rng)
+            mat = MAT_LEFT
+        if mat is not None:
+            hold.data.materials.clear()
+            hold.data.materials.append(mat)
+        for _ in range(1000):
+            vol, face = rng.choice(possible_vols)
+            pt = cube_hold.select_random_coordinate(vol, face, rng=rng)
+            cube_hold.add_hold_to_face(hold, vol, face, pt=pt, rng=rng)
+            center, radius = _world_bounding_sphere(hold)
+            if all(
+                (center - other_center).length >= radius + other_radius + 0.15
+                for other_center, other_radius in hold_spheres
+            ):
+                hold_spheres.append((center, radius))
+                break
+        else:
+            mesh = hold.data
+            bpy.data.objects.remove(hold, do_unlink=True)
+            if mesh.users == 0:
+                bpy.data.meshes.remove(mesh)
+            raise RuntimeError(
+                f"Could not place hold {i} with at least 0.5 units of clearance "
+                "after 1000 attempts"
+            )
+    return possible_vols

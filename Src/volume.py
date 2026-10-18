@@ -9,9 +9,8 @@
 #
 # For every call, three random points are sampled uniformly over the
 # face's surface, one apex point is placed at distance `d` from the
-# face's plane along its outward normal (directly above the base
-# triangle's centroid), and the three side triangles connecting the
-# base edge pairs to the apex are created.
+# face's plane along its outward normal. The base points are moved within
+# the face plane as needed so each is at least `3 * d` from the apex.
 
 # pyright: reportMissingImports=false
 
@@ -120,7 +119,9 @@ def add_pyramid_volume(obj, face_index=-1, d=0.2, name="Volume", volume_material
         obj:        Blender mesh object the pyramid is built on.
         face_index: Index of the polygon face to build the pyramid on.
         d:          Distance of the apex from the face plane, measured
-                    along the face's outward normal (default 0.2 m).
+                    along the face's outward normal. Base points are
+                    moved as needed to keep them at least `3 * d` from
+                    the apex (default 0.2 m).
         name:       Name of the new object (default "Volume"; Blender appends .001 etc. on name collisions).
         volume_material: Name of the material to use for the pyramid (default "VolumeMaterial").
         rng:        Random number generator (default None, which creates a new one).
@@ -157,11 +158,25 @@ def add_pyramid_volume(obj, face_index=-1, d=0.2, name="Volume", volume_material
         co = [v.co.copy() for v in face.verts]
         base_pts = [_random_point_in_face(co, rng) for _ in range(3)]
 
-        # Apex: distance d along the face normal, directly above the
-        # centroid of the three base points (always inside the triangle).
         normal = face.normal  # outward polygon normal in object space
-        #apex = sum(base_pts, Vector()) / 3.0 + normal * d
-        apex = random_point_in_triangle(base_pts, rng) + normal * d
+        apex_projection = random_point_in_triangle(base_pts, rng)
+        apex = apex_projection + normal * d
+
+        # Move base points radially away from the apex projection within
+        # the face plane, enough to make their 3D distance from the apex
+        # at least 3*d.
+        min_horizontal_distance = (8.0 ** 0.5) * abs(d)
+        fallback_direction = next(
+            (b - a).normalized()
+            for a, b in zip(co, co[1:] + co[:1])
+            if (b - a).length > 1e-12
+        )
+        for i, point in enumerate(base_pts):
+            offset = point - apex_projection
+            distance = offset.length
+            if distance < min_horizontal_distance:
+                direction = offset.normalized() if distance > 1e-12 else fallback_direction
+                base_pts[i] = apex_projection + direction * min_horizontal_distance
     finally:
         bm.free()
 
@@ -192,8 +207,5 @@ def add_pyramid_volume(obj, face_index=-1, d=0.2, name="Volume", volume_material
 
     # Assign 'VolumeMaterial', creating it as a copy of 'WallMaterial'
     # (or a fresh empty material if that is missing) on first use.
-    if isinstance(volume_material, str):
-        volume_material = bpy.data.materials.get(volume_material) or _get_volume_material()
-    pyr_obj.data.materials.append(volume_material)
 
     return pyr_obj
