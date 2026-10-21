@@ -13,7 +13,7 @@ def _require_blender():
         raise RuntimeError("Blender is required for wall generation; run this script inside Blender.")
 
 
-def create_wall_mesh(width, height, depth, name="Wall", rng=None):
+def create_climbing_wall_mesh(width, height, depth, name="Wall", rng=None):
     _require_blender()
 
     print(f"Creating wall with width={width}, height={height}, depth={depth}, rng={rng}")  
@@ -31,4 +31,22 @@ def create_wall_mesh(width, height, depth, name="Wall", rng=None):
 
     wall.location = (0, 0, 0)
     bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+
+    front_y = -wall.dimensions.y / 2 - 0.001
+    square_mesh = bpy.data.meshes.new(f"{name}_OriginSquare")
+    square_mesh.from_pydata(
+        (
+            (0, front_y, 0),
+            (1, front_y, 0),
+            (1, front_y, 1),
+            (0, front_y, 1),
+        ),
+        (),
+        ((0, 1, 2, 3),),
+    )
+    square = bpy.data.objects.new(f"{name}_OriginSquare", square_mesh)
+    bpy.context.scene.collection.objects.link(square)
+    square.parent = wall
+    square.matrix_parent_inverse.identity()
+
     return wall

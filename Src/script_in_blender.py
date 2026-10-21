@@ -35,6 +35,7 @@ def reload(module):
 p = get_blend_file_path()
 add_module_dir(p / ".." / "Src")
 
+import climbing_wall
 import volume
 import screenshot
 import cube_hold
@@ -47,6 +48,7 @@ rng = random.Random(seed)
 WALL_DIMENSIONS=(10.0,5.0, 0.05)
 
 MAT_WALL = rcr_materials.create_rock_material_with_noise("MatRock", color_hsv_limits=((0.35, 0.1, 0.1), (0.65, 0.4, 0.5)), p_noise=((10, 20), (2, 10), (0.5, 0.9), (0.1, 0.9)), rng=rng)
+MAT_SQUARE = rcr_materials.create_origin_square_material("MatOriginSquare", color_hsv=(0.0, 1.0, 1.0), rng=rng)
 MAT_VOLUME = rcr_materials.create_rock_material_with_noise("MatVolume", color_hsv_limits=((0.5, 0.1, 0.1), (0.85, 0.4, 0.5)), p_noise=((10, 20), (2, 10), (0.5, 0.9), (0.1, 0.9)), rng=rng)
 MAT_CENTER = rcr_materials.create_hold_material("MatCubeHold_Center", color_hsv=(0.02, 0.9, 0.6), limit=0.001, rng=rng) 
 MAT_RIGHT = rcr_materials.create_hold_material("MatCubeHold_Right", color_hsv=(0.33, 0.8, 0.8), limit=0.025, rng=rng)
@@ -56,10 +58,17 @@ WALL_NAME = "TestWall"
 
 def test1(name):
     mat = MAT_WALL
-    w = wall.create_wall_mesh(*WALL_DIMENSIONS, name, rng=rng)
+    mat_s = MAT_SQUARE
+    w = climbing_wall.create_climbing_wall_mesh(*WALL_DIMENSIONS, name, rng=rng)
     if mat is not None:
         w.data.materials.clear()
         w.data.materials.append(mat)
+    if mat_s is not None:
+        square = bpy.data.objects.get(f"{name}_OriginSquare")
+        if square is not None:
+            square.data.materials.clear()
+            square.data.materials.append(mat_s)
+            rcr_materials.set_alpha(square.data.materials[0], alpha=0.5)
     return w
 
 def test2(name):

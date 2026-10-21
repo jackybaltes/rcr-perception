@@ -12,6 +12,29 @@ def _require_blender():
     if bpy is None:
         raise RuntimeError("Blender is required for material generation; run this script inside Blender.")
 
+
+def set_alpha(mat, alpha=0.5):
+    """Set a material's alpha for viewport display and node-based rendering."""
+    _require_blender()
+    if not 0.0 <= alpha <= 1.0:
+        raise ValueError("alpha must be between 0.0 and 1.0")
+
+    color = mat.diffuse_color
+    mat.diffuse_color = (color[0], color[1], color[2], alpha)
+
+    if mat.use_nodes and mat.node_tree:
+        for node in mat.node_tree.nodes:
+            if node.type == "BSDF_PRINCIPLED":
+                alpha_input = node.inputs.get("Alpha")
+                if alpha_input is not None:
+                    alpha_input.default_value = alpha
+
+    if hasattr(mat, "surface_render_method"):
+        mat.surface_render_method = "DITHERED"
+    elif hasattr(mat, "blend_method"):
+        mat.blend_method = "BLEND" if alpha < 1.0 else "OPAQUE"
+
+
 def hsv_to_rgb(h, s, v):
     """
     Convert HSV to RGB.
@@ -111,6 +134,10 @@ def create_hold_material(name="HoldMaterial",
               (min(1,color_hsv[0]+limit), min(1,color_hsv[1]+limit), min(1,color_hsv[2]+limit)))
     
     mat = create_rock_material_with_noise(name, color_hsv_limits=limits, p_noise=None, rng=rng)
+    return mat
+
+def create_origin_square_material(name="OriginSquareMaterial", color_hsv=(0.0, 0.0, 0.0), rng=None):
+    mat = create_rock_material_with_noise(name, color_hsv_limits=(color_hsv, color_hsv), p_noise=None, rng=rng)
     return mat
 
 # hold_material = bpy.data.materials.get("HoldMaterial")
