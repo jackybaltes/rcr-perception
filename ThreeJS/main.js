@@ -114,6 +114,16 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(0, 1.15, 0);
 controls.enableDamping = true;
 
+function resetInteractiveCamera() {
+  const enableDamping = controls.enableDamping;
+  controls.enableDamping = false;
+  const cameraHeight = 1;
+  camera.position.set(0, cameraHeight, wallFront + 2);
+  controls.target.set(0, cameraHeight, wallFront);
+  controls.update();
+  controls.enableDamping = enableDamping;
+}
+
 scene.add(new THREE.HemisphereLight(0xd9e8f3, 0x34302a, 1.4));
 const keyLight = new THREE.DirectionalLight(0xfff2dc, 4.5);
 keyLight.position.set(-4, 6, 7);
@@ -687,6 +697,9 @@ window.addEventListener("keydown", (event) => {
   } else if (event.key.toLowerCase() === "r" && !event.repeat) {
     event.preventDefault();
     startHoldRotation();
+  } else if (event.key.toLowerCase() === "c" && !event.repeat) {
+    event.preventDefault();
+    resetInteractiveCamera();
   } else if (event.key === "Escape" && holdMove) {
     event.preventDefault();
     finishHoldMove(false);

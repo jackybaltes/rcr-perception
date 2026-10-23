@@ -18,6 +18,9 @@ the backplate normal while keeping the backplate attached to its face. Move the
 mouse horizontally or enter an absolute yaw angle in the textbox; it starts at
 the hold's current yaw. Press **Enter** or left-click to commit, or press
 **Esc** or right-click to cancel.
+Press **C** to reset the interactive camera to 1 m height and 2 m from the
+wall, matching the stereo camera's position convention, and aim it directly at
+the wall.
 
 The mesh in `Assets/microban_hold.stl` is loaded directly and used for every
 hold. The Blender wall generator uses half of each configured wall dimension,
