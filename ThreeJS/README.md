@@ -21,6 +21,11 @@ the hold's current yaw. Press **Enter** or left-click to commit, or press
 Press **C** to reset the interactive camera to 1 m height and 2 m from the
 wall, matching the stereo camera's position convention, and aim it directly at
 the wall.
+Press **Shift+G** to toggle a grid over the wall. The grid is aligned to the
+origin at the bottom-left corner of the red square. When enabled, use the X
+and Y spacing fields at the top of the view (both initially 0.1 m) to set grid
+spacing; spacing must be positive, and values that would create an excessively
+dense grid are rejected with a visible message.
 Press **Shift+A** to open the add menu. Choose **Volume** to add a volume at its
 default position, or **MicrobanHold** or **CubeHold** to add that hold and
 immediately place it with face-snapping translation. Left-click or Enter

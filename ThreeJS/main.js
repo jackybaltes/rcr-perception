@@ -32,6 +32,11 @@ const seedInput = document.querySelector("#seed");
 const updateSeedInput = document.querySelector("#update-seed");
 const holdCountInput = document.querySelector("#hold-count");
 const addMenu = document.querySelector("#add-menu");
+const gridControls = document.querySelector("#grid-controls");
+const gridSpacingInputs = ["x", "y"].map((axis) => (
+  document.querySelector(`#grid-spacing-${axis}`)
+));
+const gridStatus = document.querySelector("#grid-status");
 const helpPanel = document.querySelector("#help-panel");
 const helpToggle = document.querySelector("#help-toggle");
 const helpClose = document.querySelector("#help-close");
@@ -156,6 +161,16 @@ scene.add(frontFillLight, frontFillLight.target);
 
 const root = new THREE.Group();
 scene.add(root);
+const gridGroup = new THREE.Group();
+gridGroup.visible = false;
+scene.add(gridGroup);
+const gridMaterial = new THREE.LineBasicMaterial({
+  color: 0x21343b,
+  transparent: true,
+  opacity: 0.85,
+  depthWrite: false,
+  toneMapped: false,
+});
 const holdGeometries = {
   Microban: null,
   CubeHold: null,
@@ -171,6 +186,78 @@ let lastPointerX = 0;
 const raycaster = new THREE.Raycaster();
 const pointerPosition = new THREE.Vector2();
 let pointerDownPosition = null;
+let wallGridVisible = false;
+
+function rebuildWallGrid() {
+  const spacingX = gridSpacingInputs[0].valueAsNumber;
+  const spacingY = gridSpacingInputs[1].valueAsNumber;
+  if (
+    !Number.isFinite(spacingX) || spacingX <= 0
+    || !Number.isFinite(spacingY) || spacingY <= 0
+  ) {
+    gridStatus.textContent = "Grid spacing must be greater than zero.";
+    return false;
+  }
+
+  const { width, height, originMarker } = currentSceneSpec.wall;
+  const originX = originMarker.x - originMarker.width / 2;
+  const originY = originMarker.y - originMarker.height / 2;
+  const firstXIndex = Math.ceil((-width / 2 - originX) / spacingX);
+  const lastXIndex = Math.floor((width / 2 - originX) / spacingX);
+  const firstYIndex = Math.ceil((0 - originY) / spacingY);
+  const lastYIndex = Math.floor((height - originY) / spacingY);
+  const xLineCount = Math.max(0, lastXIndex - firstXIndex + 1);
+  const yLineCount = Math.max(0, lastYIndex - firstYIndex + 1);
+  if (xLineCount > 1000 || yLineCount > 1000) {
+    gridStatus.textContent = "Grid spacing is too small for this wall.";
+    return false;
+  }
+
+  const points = [];
+  for (let index = firstXIndex; index <= lastXIndex; index += 1) {
+    const x = originX + index * spacingX;
+    points.push(x, 0, WALL_FRONT_Z + 0.001, x, height, WALL_FRONT_Z + 0.001);
+  }
+  if (xLineCount === 0 || Math.abs(originX + firstXIndex * spacingX + width / 2) > 1e-6) {
+    points.push(-width / 2, 0, WALL_FRONT_Z + 0.001, -width / 2, height, WALL_FRONT_Z + 0.001);
+  }
+  if (xLineCount === 0 || Math.abs(originX + lastXIndex * spacingX - width / 2) > 1e-6) {
+    points.push(width / 2, 0, WALL_FRONT_Z + 0.001, width / 2, height, WALL_FRONT_Z + 0.001);
+  }
+  for (let index = firstYIndex; index <= lastYIndex; index += 1) {
+    const y = originY + index * spacingY;
+    points.push(-width / 2, y, WALL_FRONT_Z + 0.001, width / 2, y, WALL_FRONT_Z + 0.001);
+  }
+  if (yLineCount === 0 || Math.abs(originY + firstYIndex * spacingY) > 1e-6) {
+    points.push(-width / 2, 0, WALL_FRONT_Z + 0.001, width / 2, 0, WALL_FRONT_Z + 0.001);
+  }
+  if (yLineCount === 0 || Math.abs(originY + lastYIndex * spacingY - height) > 1e-6) {
+    points.push(-width / 2, height, WALL_FRONT_Z + 0.001, width / 2, height, WALL_FRONT_Z + 0.001);
+  }
+
+  const previousGeometry = gridGroup.children[0]?.geometry;
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(points, 3));
+  gridGroup.clear();
+  gridGroup.add(new THREE.LineSegments(geometry, gridMaterial));
+  previousGeometry?.dispose();
+  gridGroup.visible = wallGridVisible;
+  gridStatus.textContent = "";
+  return true;
+}
+
+function setWallGridVisible(visible) {
+  if (visible && !rebuildWallGrid()) return;
+  wallGridVisible = visible;
+  gridGroup.visible = visible;
+  gridControls.hidden = !visible;
+}
+
+gridSpacingInputs.forEach((input) => {
+  input.addEventListener("input", () => {
+    if (wallGridVisible) rebuildWallGrid();
+  });
+});
 
 function seededRandom(seed) {
   let state = seed >>> 0;
@@ -915,6 +1002,10 @@ window.addEventListener("keydown", (event) => {
   } else if (event.key === "Escape" && !addMenu.hidden) {
     event.preventDefault();
     closeAddMenu(true);
+  } else if (event.shiftKey && event.key.toLowerCase() === "g" && !event.repeat) {
+    event.preventDefault();
+    if (!addMenu.hidden) closeAddMenu(true);
+    setWallGridVisible(!wallGridVisible);
   } else if (event.shiftKey && event.key.toLowerCase() === "a" && !event.repeat) {
     event.preventDefault();
     if (addMenu.hidden) openAddMenu();
@@ -1270,6 +1361,7 @@ function rebuildScene(
   generation += 1;
   status.textContent = `Scene ${generation} · seed ${seed} · ${holds.length} holds · ${volumeSpecs.length} volumes`;
   delete status.dataset.error;
+  if (wallGridVisible) rebuildWallGrid();
 }
 
 function resize() {

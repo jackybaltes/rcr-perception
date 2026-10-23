@@ -41,6 +41,13 @@
       </header>
       <section class="viewport" aria-label="Interactive 3D climbing wall">
         <canvas id="scene" tabindex="0"></canvas>
+        <div id="grid-controls" class="grid-controls" hidden>
+          <label for="grid-spacing-x">X spacing (m)</label>
+          <input id="grid-spacing-x" type="number" min="0.01" step="0.1" value="0.1">
+          <label for="grid-spacing-y">Y spacing (m)</label>
+          <input id="grid-spacing-y" type="number" min="0.01" step="0.1" value="0.1">
+          <small id="grid-status" role="status" aria-live="polite"></small>
+        </div>
         <div id="add-menu" class="add-menu" role="menu" aria-label="Add to scene" hidden>
           <strong>Add to scene</strong>
           <button type="button" role="menuitem" data-add-type="volume">Volume</button>
@@ -70,6 +77,7 @@
             <li><kbd>G</kbd> moves the selected hold; move over a wall or volume face to snap.</li>
             <li>Edit X/Y/Z, then press <kbd>Enter</kbd> or left-click to finish.</li>
             <li><kbd>R</kbd> rotates the selected hold; enter an absolute yaw angle.</li>
+            <li><kbd>Shift</kbd>+<kbd>G</kbd> toggles the wall grid; set X/Y spacing in meters.</li>
             <li><kbd>X</kbd> deletes the selected hold.</li>
             <li><kbd>Shift</kbd>+<kbd>A</kbd> opens the add menu for a volume, MicrobanHold, or CubeHold.</li>
             <li><kbd>C</kbd> resets the camera to 1 m height and 2 m from the wall.</li>

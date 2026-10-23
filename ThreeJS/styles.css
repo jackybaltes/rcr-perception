@@ -116,6 +116,48 @@ body {
   min-height: 420px;
 }
 
+.grid-controls {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 11px;
+  transform: translateX(-50%);
+  border: 1px solid #3b4951;
+  border-radius: 6px;
+  background: rgb(16 22 27 / 94%);
+  color: #d7e0e4;
+  font-size: 11px;
+}
+
+.grid-controls[hidden] {
+  display: none;
+}
+
+.grid-controls input {
+  width: 78px;
+  height: 30px;
+  padding: 0 7px;
+  border: 1px solid #3b4951;
+  border-radius: 4px;
+  background: #10161b;
+  color: #f1f4f5;
+  font: inherit;
+  font-size: 12px;
+}
+
+.grid-controls small {
+  color: #ffb6b6;
+  white-space: nowrap;
+}
+
+.grid-controls small:empty {
+  display: none;
+}
+
 .add-menu {
   position: absolute;
   top: 16px;
@@ -290,6 +332,17 @@ body {
 }
 
 @media (max-width: 760px) {
+  .grid-controls {
+    max-width: calc(100% - 24px);
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .grid-controls small {
+    width: 100%;
+    text-align: center;
+  }
+
   .hold-transform-control {
     max-width: calc(100% - 24px);
     flex-wrap: wrap;
