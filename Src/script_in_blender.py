@@ -39,7 +39,6 @@ import climbing_wall
 import volume
 import screenshot
 import cube_hold
-import wall
 import rcr_materials
 
 seed = 42
@@ -161,6 +160,8 @@ def test4(name, NN=10):
                 for other_center, other_radius in hold_spheres
             ):
                 hold_spheres.append((center, radius))
+                pos = hold.location
+                print(f"Placed hold {hold.name} at {pos} on volume {vol.name} face {face} at point {pt} image coordinates in left camera view: {screenshot.get_image_coordinate(pos, bpy.data.objects['CameraLeft'])}")
                 break
         else:
             mesh = hold.data

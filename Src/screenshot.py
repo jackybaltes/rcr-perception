@@ -26,6 +26,29 @@ except ImportError:  # NumPy is provided by Blender, not necessarily system Pyth
     np = None
 
 
+def get_image_coordinate(pt, cam):
+    """Project a world-space point to floating-point image pixel coordinates.
+
+    Coordinates use the image's top-left as the origin. Points outside the
+    camera frame are projected outside the image bounds.
+    """
+    if bpy is None:
+        raise RuntimeError("Blender is required to project points into an image.")
+    if cam is None or cam.type != 'CAMERA':
+        raise TypeError("cam must be a Blender camera object")
+
+    from bpy_extras.object_utils import world_to_camera_view
+    from mathutils import Vector
+
+    scene = bpy.context.scene
+    projected = world_to_camera_view(scene, cam, Vector(pt))
+    render = scene.render
+    scale = render.resolution_percentage / 100
+    width = render.resolution_x * scale
+    height = render.resolution_y * scale
+    return projected.x * width, (1.0 - projected.y) * height
+
+
 def create_screenshot(output_path=None,
                       left_camera="CameraLeft",
                       right_camera="CameraRight"):
