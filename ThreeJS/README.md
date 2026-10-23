@@ -4,11 +4,19 @@ This is a browser-based recreation of the Blender/Python scene generator. It
 rebuilds the climbing wall, origin marker, triangular volumes, and seeded hold
 layout in Three.js. The original Blender `.blend` file is not loaded in the
 browser; the wall and volumes are generated from the dimensions and procedures
-in `Src/`.
+in `Src/`. The wall origin is offset by half its thickness, placing its front
+face exactly at z = 0.
 Generated holds use only -45, 0, or +45 degree rotations relative to their
 face. Their backfaces are anchored flush to the sampled wall or volume surface.
 Left-click a hold in the scene to highlight it and scroll the JSON editor to its
-record.
+record. With a hold selected, press **G** and move the pointer to preview it
+snapped to the nearest visible wall or volume face. Left-click to finish moving
+the hold; the X/Y/Z boxes also allow direct coordinate entry. Press **Enter**
+or left-click to commit, or press **Esc** or right-click to cancel and restore
+the original transform. Press **R** with a hold selected to rotate it around
+the backplate normal while keeping the backplate attached to its face. Move the
+mouse horizontally or enter an angle in the backplate-angle textbox; press
+**Enter** or left-click to commit, or press **Esc** or right-click to cancel.
 
 The mesh in `Assets/microban_hold.stl` is loaded directly and used for every
 hold. The Blender wall generator uses half of each configured wall dimension,
@@ -29,9 +37,10 @@ files are still accepted and retain the current wall and volumes.
 Use **Load scene from disk** to restore a saved scene, or **Save scene to disk**
 to download the current JSON as `climbing-scene.json`.
 Above the JSON field, a side-by-side front stereo preview shows the wall from
-two camera positions with a 64 mm eye separation and a center distance of 2 m
-from the wall plane. The camera height and wall distance can be adjusted live
-using the numeric controls above the preview.
+two camera positions with a 64 mm eye separation and a default center distance
+of 0.75 m from the wall plane. The camera height and wall distance can be
+adjusted live using the numeric controls above the preview; the distance is
+measured from the wall's z = 0 front face.
 Use **Save stereo view as PNG** to download the current side-by-side preview as
 `stereo-camera-view.png`.
 

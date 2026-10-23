@@ -36,14 +36,29 @@
         </form>
       </header>
       <section class="viewport" aria-label="Interactive 3D climbing wall">
-        <canvas id="scene"></canvas>
+        <canvas id="scene" tabindex="0"></canvas>
+        <div id="hold-move-control" class="hold-transform-control hold-move-control" hidden>
+          <label for="hold-move-x">X</label>
+          <input id="hold-move-x" type="number" step="0.001" aria-label="Hold X position in meters">
+          <label for="hold-move-y">Y</label>
+          <input id="hold-move-y" type="number" step="0.001" aria-label="Hold Y position in meters">
+          <label for="hold-move-z">Z</label>
+          <input id="hold-move-z" type="number" step="0.001" aria-label="Hold Z position in meters">
+          <small>Left-click or Enter to finish · Esc or right-click to cancel</small>
+        </div>
+        <label id="hold-rotation-control" class="hold-rotation-control" for="hold-rotation" hidden>
+          Backplate angle
+          <input id="hold-rotation" type="number" value="0.0" step="0.1" aria-label="Current hold backplate angle in degrees">
+          <span>°</span>
+          <small>Rotate around the face normal · Left-click or Enter to finish · Esc or right-click to cancel</small>
+        </label>
         <div id="status" class="status" role="status">Preparing scene…</div>
-        <div class="hint">Click a hold to select · Drag to orbit · Scroll to zoom · Right-drag to pan</div>
+        <div class="hint">Click a hold · G moves with X/Y/Z · R rotates on its face · left-click/Enter finishes · Esc/right-click cancels · Drag to orbit · Scroll to zoom · Right-drag to pan</div>
       </section>
       <section class="stereo-panel" aria-labelledby="stereo-label">
         <div class="stereo-heading">
           <h2 id="stereo-label">Front stereo camera</h2>
-          <span id="stereo-readout">Height 1.25 m · distance 2 m</span>
+          <span id="stereo-readout">Height 1.25 m · distance 0.75 m</span>
         </div>
         <div class="stereo-controls">
           <label>
@@ -52,7 +67,7 @@
           </label>
           <label>
             Distance to wall (m)
-            <input id="stereo-distance" type="number" value="2" min="0.05" step="0.1">
+            <input id="stereo-distance" type="number" value="0.75" min="0.05" step="0.1">
           </label>
           <button id="save-stereo" type="button">Save stereo view as PNG</button>
         </div>

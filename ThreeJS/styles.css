@@ -101,6 +101,67 @@ body {
   min-height: 420px;
 }
 
+.hold-transform-control {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid #69763a;
+  border-radius: 6px;
+  background: rgb(16 22 27 / 94%);
+  color: #d7e0e4;
+  font-size: 12px;
+}
+
+.hold-transform-control[hidden] {
+  display: none;
+}
+
+.hold-rotation-control {
+  transform: translateX(-50%);
+}
+
+.hold-transform-control input {
+  width: 90px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid #3b4951;
+  border-radius: 4px;
+  background: #10161b;
+  color: #f1f4f5;
+  font: inherit;
+}
+
+.hold-move-control {
+  transform: translateX(-50%);
+}
+
+.hold-move-control input {
+  width: 76px;
+}
+
+.hold-transform-control small {
+  color: #91a4af;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .hold-transform-control {
+    max-width: calc(100% - 24px);
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .hold-transform-control small {
+    width: 100%;
+    text-align: center;
+  }
+}
+
 .hold-data {
   display: grid;
   gap: 8px;

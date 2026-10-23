@@ -5,6 +5,7 @@ import { STLLoader } from "three/addons/loaders/STLLoader.js";
 const WALL_WIDTH = 5;
 const WALL_HEIGHT = 2.5;
 const WALL_DEPTH = 0.025;
+const WALL_FRONT_Z = 0;
 const DEFAULT_SCENE = {
   wall: {
     width: WALL_WIDTH,
@@ -35,6 +36,12 @@ const holdJsonFileInput = document.querySelector("#hold-json-file");
 const loadHoldsFileButton = document.querySelector("#load-holds-file");
 const saveHoldsFileButton = document.querySelector("#save-holds-file");
 const holdStatus = document.querySelector("#hold-status");
+const holdMoveControl = document.querySelector("#hold-move-control");
+const holdMoveInputs = ["x", "y", "z"].map((axis) => (
+  document.querySelector(`#hold-move-${axis}`)
+));
+const holdRotationControl = document.querySelector("#hold-rotation-control");
+const holdRotationInput = document.querySelector("#hold-rotation");
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x10161b);
@@ -63,7 +70,7 @@ stereoRenderer.outputColorSpace = THREE.SRGBColorSpace;
 stereoRenderer.toneMapping = THREE.ACESFilmicToneMapping;
 stereoRenderer.toneMappingExposure = 1.1;
 
-let wallFront = WALL_DEPTH / 2;
+let wallFront = WALL_FRONT_Z;
 const stereoEyeSeparation = 0.064;
 const stereoTarget = new THREE.Vector3();
 const stereoLeftCamera = new THREE.PerspectiveCamera(74, 1, 0.01, 100);
@@ -140,6 +147,9 @@ let selectedHold = null;
 let currentSceneSpec = structuredClone(DEFAULT_SCENE);
 let currentSeed = 42;
 let currentMaterialSeed = 0;
+let holdMove = null;
+let holdRotation = null;
+let lastPointerX = 0;
 const raycaster = new THREE.Raycaster();
 const pointerPosition = new THREE.Vector2();
 let pointerDownPosition = null;
@@ -205,7 +215,8 @@ function addWall(group, material, wallSpec) {
     material,
   );
   wall.name = "TestWall";
-  wall.position.y = wallSpec.height / 2;
+  wall.userData.snapSurface = true;
+  wall.position.set(0, wallSpec.height / 2, WALL_FRONT_Z - wallSpec.depth / 2);
   wall.receiveShadow = true;
   group.add(wall);
 
@@ -222,7 +233,7 @@ function addWall(group, material, wallSpec) {
   square.position.set(
     wallSpec.originMarker.x,
     wallSpec.originMarker.y,
-    wallSpec.depth / 2 + 0.001,
+    WALL_FRONT_Z + 0.001,
   );
   group.add(square);
 }
@@ -251,6 +262,7 @@ function makeTriangleSurface(a, b, c, material, name, group, surfaces, volumeCen
   mesh.name = name;
   mesh.castShadow = true;
   mesh.receiveShadow = true;
+  if (normal.z > 0.25) mesh.userData.snapSurface = true;
   group.add(mesh);
 
   const area = new THREE.Vector3().subVectors(b, a)
@@ -266,7 +278,7 @@ function makeTriangleSurface(a, b, c, material, name, group, surfaces, volumeCen
 
 function addPyramidVolume(group, surfaces, volumeSpec, wallSpec, material) {
   const { center, baseWidth, baseHeight, depth } = volumeSpec;
-  const frontZ = wallSpec.depth / 2;
+  const frontZ = WALL_FRONT_Z;
   const base = [
     new THREE.Vector3(center.x - baseWidth / 2, center.y - baseHeight / 2, frontZ),
     new THREE.Vector3(center.x + baseWidth / 2, center.y - baseHeight / 2, frontZ),
@@ -441,6 +453,8 @@ function serializeSceneData(holds) {
 }
 
 function setSelectedHold(hold) {
+  if (holdMove && hold !== selectedHold) finishHoldMove(false);
+  if (holdRotation && hold !== selectedHold) finishHoldRotation(false);
   if (selectedHold) {
     selectedHold.material.emissive.copy(selectedHold.userData.baseEmissive);
     selectedHold.material.emissiveIntensity = selectedHold.userData.baseEmissiveIntensity;
@@ -457,23 +471,30 @@ function setSelectedHold(hold) {
   const key = selectedHold.userData.jsonKey;
   holdStatus.textContent = `Selected ${key}.`;
   delete holdStatus.dataset.error;
+  scrollJsonToHold(key);
+}
+
+function scrollJsonToHold(key) {
   const keyStart = holdJson.value.indexOf(`${JSON.stringify(key)}:`);
   if (keyStart < 0) return;
 
   const lineNumber = holdJson.value.slice(0, keyStart).split("\n").length - 1;
   const lineHeight = Number.parseFloat(getComputedStyle(holdJson).lineHeight);
   holdJson.scrollTop = lineNumber * lineHeight;
-  holdJson.focus({ preventScroll: true });
   holdJson.setSelectionRange(keyStart, keyStart + JSON.stringify(key).length);
 }
 
-function findHoldAtPointer(event) {
+function setPointerFromEvent(event) {
   const bounds = canvas.getBoundingClientRect();
   pointerPosition.set(
     ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
     -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
   );
   raycaster.setFromCamera(pointerPosition, camera);
+}
+
+function findHoldAtPointer(event) {
+  setPointerFromEvent(event);
   const [intersection] = raycaster.intersectObject(root, true);
   let candidate = intersection?.object ?? null;
   while (candidate && candidate.userData.holdType !== "Microban") {
@@ -481,6 +502,244 @@ function findHoldAtPointer(event) {
   }
   return candidate;
 }
+
+function findSurfaceAtPointer(event) {
+  setPointerFromEvent(event);
+  return raycaster.intersectObject(root, true).find(({ object, face }) => {
+    if (!object.userData.snapSurface || !face) return false;
+    const normalMatrix = new THREE.Matrix3().getNormalMatrix(object.matrixWorld);
+    return face.normal.clone().applyMatrix3(normalMatrix).normalize().z > 0.25;
+  }) ?? null;
+}
+
+function startHoldMove() {
+  if (!selectedHold || holdMove || holdRotation) return;
+  holdMove = {
+    position: selectedHold.position.clone(),
+    quaternion: selectedHold.quaternion.clone(),
+    coordinatesEdited: false,
+  };
+  controls.enabled = false;
+  holdMoveControl.hidden = false;
+  updateHoldMoveInputs(selectedHold.position);
+  holdMoveInputs[0].focus();
+  holdMoveInputs[0].select();
+  canvas.style.cursor = "move";
+  holdStatus.textContent = `Moving ${selectedHold.userData.jsonKey} · edit X/Y/Z or move over a face; left-click or Enter to finish, Esc or right-click to cancel.`;
+}
+
+function updateHoldMoveInputs(position) {
+  holdMoveInputs.forEach((input, axis) => {
+    input.value = position.getComponent(axis).toFixed(3);
+  });
+}
+
+function applyHoldMoveInputs() {
+  if (!holdMove || !selectedHold) return false;
+  const coordinates = holdMoveInputs.map((input) => input.valueAsNumber);
+  if (coordinates.some((value) => !Number.isFinite(value))) return false;
+  selectedHold.position.set(...coordinates);
+  holdMove.coordinatesEdited = true;
+  return true;
+}
+
+function updateHoldMove(event) {
+  if (!holdMove || !selectedHold) return;
+  if (holdMove.coordinatesEdited) return;
+  const surfaceHit = findSurfaceAtPointer(event);
+  if (!surfaceHit) {
+    holdStatus.textContent = `Moving ${selectedHold.userData.jsonKey} · move over the wall or a volume face, then left-click to finish.`;
+    return;
+  }
+
+  const normalMatrix = new THREE.Matrix3().getNormalMatrix(surfaceHit.object.matrixWorld);
+  const targetNormal = surfaceHit.face.normal.clone()
+    .applyMatrix3(normalMatrix)
+    .normalize();
+  const currentNormal = new THREE.Vector3(0, 0, 1)
+    .applyQuaternion(selectedHold.quaternion)
+    .normalize();
+  const alignment = new THREE.Quaternion().setFromUnitVectors(currentNormal, targetNormal);
+  selectedHold.quaternion.premultiply(alignment);
+  selectedHold.position.copy(surfaceHit.point);
+  holdMove.coordinatesEdited = false;
+  updateHoldMoveInputs(selectedHold.position);
+  holdStatus.textContent = `Moving ${selectedHold.userData.jsonKey} · snapped to ${surfaceHit.object.name}; left-click or Enter to finish, Esc or right-click to cancel.`;
+}
+
+function finishHoldMove(commit) {
+  if (!holdMove) return;
+  if (commit && !applyHoldMoveInputs()) {
+    holdStatus.textContent = "Enter valid numeric values for X, Y, and Z before finishing the move.";
+    return;
+  }
+  if (!commit && selectedHold) {
+    selectedHold.position.copy(holdMove.position);
+    selectedHold.quaternion.copy(holdMove.quaternion);
+  }
+
+  holdMove = null;
+  controls.enabled = true;
+  holdMoveControl.hidden = true;
+  if (!commit) updateHoldMoveInputs(selectedHold?.position ?? new THREE.Vector3());
+  canvas.style.cursor = "";
+  if (commit && selectedHold) {
+    const holds = [];
+    root.traverse((object) => {
+      if (object.userData.holdType === "Microban") holds.push(object);
+    });
+    holdJson.value = serializeSceneData(holds);
+    scrollJsonToHold(selectedHold.userData.jsonKey);
+    holdStatus.textContent = `Moved ${selectedHold.userData.jsonKey}.`;
+  } else if (selectedHold) {
+    holdStatus.textContent = `Move cancelled for ${selectedHold.userData.jsonKey}.`;
+  }
+  return true;
+}
+
+function applyHoldRotation(degrees) {
+  if (!holdRotation || !selectedHold || !Number.isFinite(degrees)) return;
+  holdRotation.angle = degrees;
+  const twist = new THREE.Quaternion().setFromAxisAngle(
+    new THREE.Vector3(0, 0, 1),
+    THREE.MathUtils.degToRad(degrees),
+  );
+  const anchorWorld = selectedHold.localToWorld(holdRotation.backplateAnchor.clone());
+  selectedHold.quaternion.copy(holdRotation.quaternion).multiply(twist);
+  selectedHold.updateMatrixWorld(true);
+
+  const rotatedAnchorWorld = selectedHold.localToWorld(holdRotation.backplateAnchor.clone());
+  if (selectedHold.parent) {
+    const anchorInParent = selectedHold.parent.worldToLocal(anchorWorld);
+    const rotatedAnchorInParent = selectedHold.parent.worldToLocal(rotatedAnchorWorld);
+    selectedHold.position.add(anchorInParent.sub(rotatedAnchorInParent));
+  } else {
+    selectedHold.position.add(anchorWorld.sub(rotatedAnchorWorld));
+  }
+  selectedHold.updateMatrixWorld(true);
+  holdRotationInput.value = degrees.toFixed(1);
+  holdStatus.textContent = `Rotating ${selectedHold.userData.jsonKey} around its backplate normal · ${degrees.toFixed(1)}° · click or press Enter to finish, Esc to cancel.`;
+}
+
+function startHoldRotation() {
+  if (!selectedHold || holdMove || holdRotation) return;
+  selectedHold.updateMatrixWorld(true);
+  if (!selectedHold.geometry.boundingBox) selectedHold.geometry.computeBoundingBox();
+  const bounds = selectedHold.geometry.boundingBox;
+  const backplateAnchor = new THREE.Vector3(
+    (bounds.min.x + bounds.max.x) / 2,
+    (bounds.min.y + bounds.max.y) / 2,
+    bounds.min.z,
+  );
+  holdRotation = {
+    quaternion: selectedHold.quaternion.clone(),
+    backplateAnchor,
+    pointerX: lastPointerX,
+    angle: 0,
+  };
+  controls.enabled = false;
+  holdRotationControl.hidden = false;
+  holdRotationInput.value = "0.0";
+  holdRotationInput.focus();
+  holdRotationInput.select();
+  canvas.style.cursor = "ew-resize";
+  holdStatus.textContent = `Rotating ${selectedHold.userData.jsonKey} around its backplate normal · 0.0° · move mouse horizontally, click or press Enter to finish.`;
+}
+
+function finishHoldRotation(commit) {
+  if (!holdRotation) return;
+  if (!commit && selectedHold) {
+    selectedHold.quaternion.copy(holdRotation.quaternion);
+  }
+
+  holdRotation = null;
+  controls.enabled = true;
+  holdRotationControl.hidden = true;
+  holdRotationInput.value = "0.0";
+  canvas.style.cursor = "";
+  if (commit && selectedHold) {
+    const holds = [];
+    root.traverse((object) => {
+      if (object.userData.holdType === "Microban") holds.push(object);
+    });
+    holdJson.value = serializeSceneData(holds);
+    scrollJsonToHold(selectedHold.userData.jsonKey);
+    holdStatus.textContent = `Rotated ${selectedHold.userData.jsonKey}.`;
+  } else if (selectedHold) {
+    holdStatus.textContent = `Rotation cancelled for ${selectedHold.userData.jsonKey}.`;
+  }
+}
+
+window.addEventListener("keydown", (event) => {
+  if (event.target instanceof HTMLElement && event.target.matches("input, textarea, select, [contenteditable='true']")) {
+    return;
+  }
+  if (event.key.toLowerCase() === "g" && !event.repeat) {
+    event.preventDefault();
+    startHoldMove();
+  } else if (event.key.toLowerCase() === "r" && !event.repeat) {
+    event.preventDefault();
+    startHoldRotation();
+  } else if (event.key === "Escape" && holdMove) {
+    event.preventDefault();
+    finishHoldMove(false);
+  } else if (event.key === "Escape" && holdRotation) {
+    event.preventDefault();
+    finishHoldRotation(false);
+  }
+});
+
+holdMoveInputs.forEach((input) => {
+  input.addEventListener("input", applyHoldMoveInputs);
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      if (finishHoldMove(true)) canvas.focus({ preventScroll: true });
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      finishHoldMove(false);
+      canvas.focus({ preventScroll: true });
+    }
+  });
+  input.addEventListener("pointerdown", (event) => {
+    event.stopPropagation();
+  });
+});
+
+holdRotationInput.addEventListener("input", () => {
+  const degrees = holdRotationInput.valueAsNumber;
+  if (Number.isFinite(degrees)) applyHoldRotation(degrees);
+});
+
+holdRotationInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    finishHoldRotation(true);
+    canvas.focus({ preventScroll: true });
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    finishHoldRotation(false);
+    canvas.focus({ preventScroll: true });
+  }
+});
+
+holdMoveControl.addEventListener("pointerup", (event) => {
+  event.stopPropagation();
+  if (event.button === 2) finishHoldMove(false);
+});
+holdMoveControl.addEventListener("contextmenu", (event) => {
+  event.preventDefault();
+});
+holdRotationControl.addEventListener("pointerdown", (event) => {
+  event.stopPropagation();
+});
+holdRotationControl.addEventListener("pointerup", (event) => {
+  event.stopPropagation();
+  if (event.button === 2) finishHoldRotation(false);
+});
+holdRotationControl.addEventListener("contextmenu", (event) => {
+  event.preventDefault();
+});
 
 function parseHoldRecords(data) {
   if (!data || typeof data !== "object" || Array.isArray(data)) {
@@ -681,6 +940,8 @@ function rebuildScene(
     return;
   }
 
+  if (holdRotation) finishHoldRotation(false);
+  if (holdMove) finishHoldMove(false);
   const nextRoot = new THREE.Group();
   const materialRng = seededRandom(materialSeed);
   const noiseParameters = [[10, 20], [2, 10], [0.5, 0.9], [0.1, 0.9]];
@@ -696,7 +957,7 @@ function rebuildScene(
   );
   const { wall: wallSpec, volumes: volumeSpecs } = sceneSpec;
   const surfaces = [];
-  const frontZ = wallSpec.depth / 2;
+  const frontZ = WALL_FRONT_Z;
   surfaces.push({
     points: [
       new THREE.Vector3(-wallSpec.width / 2, 0, frontZ),
@@ -748,7 +1009,7 @@ function rebuildScene(
   currentMaterialSeed = materialSeed;
   seedInput.value = String(seed);
   holdCountInput.value = String(holds.length);
-  wallFront = wallSpec.depth / 2;
+  wallFront = WALL_FRONT_Z;
   updateStereoCamera();
   holdJson.value = serializeSceneData(holds);
   generation += 1;
@@ -784,12 +1045,34 @@ function render() {
 }
 
 canvas.addEventListener("pointerdown", (event) => {
+  lastPointerX = event.clientX;
+  if (holdRotation) {
+    pointerDownPosition = null;
+    return;
+  }
+  if (holdMove) {
+    pointerDownPosition = null;
+    return;
+  }
   pointerDownPosition = event.button === 0
     ? { x: event.clientX, y: event.clientY }
     : null;
 });
 
 canvas.addEventListener("pointerup", (event) => {
+  lastPointerX = event.clientX;
+  if (holdRotation) {
+    finishHoldRotation(event.button === 0);
+    return;
+  }
+  if (holdMove) {
+    if (event.button === 0) {
+      finishHoldMove(true);
+    } else if (event.button === 2) {
+      finishHoldMove(false);
+    }
+    return;
+  }
   if (!pointerDownPosition) return;
   const moved = Math.hypot(
     event.clientX - pointerDownPosition.x,
@@ -802,12 +1085,27 @@ canvas.addEventListener("pointerup", (event) => {
 });
 
 canvas.addEventListener("pointermove", (event) => {
+  lastPointerX = event.clientX;
+  if (holdRotation) {
+    applyHoldRotation((event.clientX - holdRotation.pointerX) * 0.5);
+    canvas.style.cursor = "ew-resize";
+    return;
+  }
+  if (holdMove) {
+    updateHoldMove(event);
+    canvas.style.cursor = "move";
+    return;
+  }
   canvas.style.cursor = findHoldAtPointer(event) ? "pointer" : "";
 });
 
 canvas.addEventListener("pointerleave", () => {
   canvas.style.cursor = "";
   pointerDownPosition = null;
+});
+
+canvas.addEventListener("contextmenu", (event) => {
+  if (holdMove || holdRotation) event.preventDefault();
 });
 
 saveStereoButton.addEventListener("click", () => {
