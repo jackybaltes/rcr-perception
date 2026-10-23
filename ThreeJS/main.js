@@ -31,6 +31,10 @@ const form = document.querySelector("#scene-controls");
 const seedInput = document.querySelector("#seed");
 const updateSeedInput = document.querySelector("#update-seed");
 const holdCountInput = document.querySelector("#hold-count");
+const addMenu = document.querySelector("#add-menu");
+const helpPanel = document.querySelector("#help-panel");
+const helpToggle = document.querySelector("#help-toggle");
+const helpClose = document.querySelector("#help-close");
 const holdJson = document.querySelector("#hold-json");
 const loadHoldsButton = document.querySelector("#load-holds");
 const holdJsonFileInput = document.querySelector("#hold-json-file");
@@ -152,7 +156,10 @@ scene.add(frontFillLight, frontFillLight.target);
 
 const root = new THREE.Group();
 scene.add(root);
-let microbanGeometry = null;
+const holdGeometries = {
+  Microban: null,
+  CubeHold: null,
+};
 let generation = 0;
 let selectedHold = null;
 let currentSceneSpec = structuredClone(DEFAULT_SCENE);
@@ -320,9 +327,11 @@ function addPyramidVolume(group, surfaces, volumeSpec, wallSpec, material) {
   });
 }
 
-function makeMicrobanHold(color) {
+function makeHold(type, color) {
+  const geometry = holdGeometries[type];
+  if (!geometry) throw new Error(`${type} mesh is not loaded.`);
   const hold = new THREE.Mesh(
-    microbanGeometry,
+    geometry,
     new THREE.MeshStandardMaterial({
       color,
       emissive: color,
@@ -333,8 +342,34 @@ function makeMicrobanHold(color) {
     }),
   );
   hold.castShadow = true;
-  hold.name = "MicrobanHold";
+  hold.name = `${type}Hold`;
+  hold.userData.holdType = type;
   return hold;
+}
+
+function normalizeHoldGeometry(geometry) {
+  // Convert Blender coordinates (X, Y, Z) to Three.js coordinates (X, Z, -Y).
+  const conversion = new THREE.Matrix4().set(
+    1, 0, 0, 0,
+    0, 0, 1, 0,
+    0, -1, 0, 0,
+    0, 0, 0, 1,
+  );
+  geometry.applyMatrix4(conversion);
+  geometry.computeBoundingBox();
+  const bounds = geometry.boundingBox;
+  geometry.translate(
+    -(bounds.min.x + bounds.max.x) / 2,
+    -(bounds.min.y + bounds.max.y) / 2,
+    // Make the hold's backplate flush with the target surface at local z = 0.
+    -bounds.min.z,
+  );
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function isHold(object) {
+  return Object.hasOwn(holdGeometries, object.userData.holdType);
 }
 
 function renderStereoView() {
@@ -379,7 +414,7 @@ function sampleSurface(surfaces, random) {
 }
 
 function addHolds(group, surfaces, count, seed) {
-  if (count > 0 && !microbanGeometry) {
+  if (count > 0 && !holdGeometries.Microban) {
     throw new Error("Microban hold mesh is not loaded.");
   }
 
@@ -394,7 +429,7 @@ function addHolds(group, surfaces, count, seed) {
     let placedSuccessfully = false;
     for (let attempt = 0; attempt < 1000; attempt += 1) {
       const color = colors[Math.floor(random() * colors.length)];
-      hold = makeMicrobanHold(color);
+      hold = makeHold("Microban", color);
       const { point, normal } = sampleSurface(surfaces, random);
       // The STL's backface is normalized to local z = 0, so this anchors it
       // directly on the sampled face.
@@ -411,7 +446,6 @@ function addHolds(group, surfaces, count, seed) {
       );
       if (clear) {
         hold.name = `MicrobanHold_${i}`;
-        hold.userData.holdType = "Microban";
         group.add(hold);
         holds.push(hold);
         placed.push({ center: center.clone(), radius });
@@ -440,8 +474,8 @@ function serializeSceneData(holds) {
     );
     hold.userData.jsonKey = key;
     holdData[key] = {
-      type: "microban_hold",
-      color: hold.material.color.getHex(),
+      type: hold.userData.holdType === "CubeHold" ? "cube_hold" : "microban_hold",
+      color: `#${hold.material.color.getHexString().toUpperCase()}`,
       position: {
         x: round(position.x),
         y: round(position.y),
@@ -485,6 +519,29 @@ function setSelectedHold(hold) {
   scrollJsonToHold(key);
 }
 
+function getHoldRecords() {
+  const holds = [];
+  root.traverse((object) => {
+    if (!isHold(object)) return;
+    const orientation = new THREE.Euler().setFromQuaternion(
+      object.getWorldQuaternion(new THREE.Quaternion()),
+      "XYZ",
+    );
+    holds.push({
+      name: object.userData.jsonKey,
+      type: object.userData.holdType === "CubeHold" ? "cube_hold" : "microban_hold",
+      color: object.material.color.getHex(),
+      position: object.getWorldPosition(new THREE.Vector3()),
+      orientation: {
+        roll: orientation.x,
+        pitch: orientation.y,
+        yaw: orientation.z,
+      },
+    });
+  });
+  return holds;
+}
+
 function scrollJsonToHold(key) {
   const keyStart = holdJson.value.indexOf(`${JSON.stringify(key)}:`);
   if (keyStart < 0) return;
@@ -508,7 +565,7 @@ function findHoldAtPointer(event) {
   setPointerFromEvent(event);
   const [intersection] = raycaster.intersectObject(root, true);
   let candidate = intersection?.object ?? null;
-  while (candidate && candidate.userData.holdType !== "Microban") {
+  while (candidate && !isHold(candidate)) {
     candidate = candidate.parent;
   }
   return candidate;
@@ -523,12 +580,13 @@ function findSurfaceAtPointer(event) {
   }) ?? null;
 }
 
-function startHoldMove() {
+function startHoldMove(newlyCreated = false) {
   if (!selectedHold || holdMove || holdRotation) return;
   holdMove = {
     position: selectedHold.position.clone(),
     quaternion: selectedHold.quaternion.clone(),
     coordinatesEdited: false,
+    newlyCreated,
   };
   controls.enabled = false;
   holdMoveControl.hidden = false;
@@ -584,7 +642,9 @@ function finishHoldMove(commit) {
     holdStatus.textContent = "Enter valid numeric values for X, Y, and Z before finishing the move.";
     return;
   }
-  if (!commit && selectedHold) {
+  const removeNewHold = !commit && holdMove.newlyCreated && selectedHold;
+  const newlyCreatedHold = holdMove.newlyCreated;
+  if (!commit && selectedHold && !removeNewHold) {
     selectedHold.position.copy(holdMove.position);
     selectedHold.quaternion.copy(holdMove.quaternion);
   }
@@ -592,21 +652,142 @@ function finishHoldMove(commit) {
   holdMove = null;
   controls.enabled = true;
   holdMoveControl.hidden = true;
-  if (!commit) updateHoldMoveInputs(selectedHold?.position ?? new THREE.Vector3());
+  if (removeNewHold) {
+    selectedHold.material.emissive.copy(selectedHold.userData.baseEmissive);
+    selectedHold.material.emissiveIntensity = selectedHold.userData.baseEmissiveIntensity;
+    selectedHold.removeFromParent();
+    selectedHold.material.dispose();
+    selectedHold = null;
+  }
+  if (!commit && selectedHold) updateHoldMoveInputs(selectedHold.position);
   canvas.style.cursor = "";
   if (commit && selectedHold) {
     const holds = [];
     root.traverse((object) => {
-      if (object.userData.holdType === "Microban") holds.push(object);
+      if (isHold(object)) holds.push(object);
     });
     holdJson.value = serializeSceneData(holds);
     scrollJsonToHold(selectedHold.userData.jsonKey);
-    holdStatus.textContent = `Moved ${selectedHold.userData.jsonKey}.`;
+    holdCountInput.value = String(holds.length);
+    if (newlyCreatedHold) {
+      status.textContent = `Scene ${generation} · seed ${currentSeed} · ${holds.length} holds · ${currentSceneSpec.volumes.length} volumes`;
+      holdStatus.textContent = `Added ${selectedHold.userData.jsonKey}.`;
+    } else {
+      holdStatus.textContent = `Moved ${selectedHold.userData.jsonKey}.`;
+    }
   } else if (selectedHold) {
     holdStatus.textContent = `Move cancelled for ${selectedHold.userData.jsonKey}.`;
+  } else if (removeNewHold) {
+    holdStatus.textContent = "New hold placement cancelled.";
   }
   return true;
 }
+
+function nextHoldKey() {
+  const usedKeys = new Set();
+  root.traverse((object) => {
+    if (isHold(object)) usedKeys.add(object.userData.jsonKey);
+  });
+  let index = 1;
+  while (usedKeys.has(`hold_${index}`)) index += 1;
+  return `hold_${index}`;
+}
+
+function addHold(type) {
+  if (!holdGeometries[type]) {
+    holdStatus.textContent = `${type} mesh is not loaded yet.`;
+    return;
+  }
+  const holds = getHoldRecords();
+  if (holds.length >= 50) {
+    holdStatus.textContent = "A scene can contain at most 50 holds.";
+    return;
+  }
+
+  const colors = [0xf2554e, 0x59c77b, 0x6389ed];
+  const hold = makeHold(type, colors[holds.length % colors.length]);
+  const key = nextHoldKey();
+  hold.name = `${type}_${key.slice("hold_".length)}`;
+  hold.userData.jsonKey = key;
+  hold.position.set(0, currentSceneSpec.wall.height / 2, wallFront);
+  hold.quaternion.identity();
+  root.add(hold);
+  setSelectedHold(hold);
+  startHoldMove(true);
+}
+
+function addVolume() {
+  if (currentSceneSpec.volumes.length >= 50) {
+    holdStatus.textContent = "A scene can contain at most 50 volumes.";
+    return;
+  }
+
+  const sceneSpec = structuredClone(currentSceneSpec);
+  const baseWidth = 0.75;
+  const baseHeight = 0.65;
+  const depth = 0.24;
+  let index = 0;
+  while (sceneSpec.volumes.some((volume) => volume.name === `Volume_${index}`)) index += 1;
+  const addedVolumeCount = Math.max(0, sceneSpec.volumes.length - DEFAULT_SCENE.volumes.length);
+  sceneSpec.volumes.push({
+    name: `Volume_${index}`,
+    center: {
+      x: 0,
+      y: Math.min(sceneSpec.wall.height / 2, 0.5 + addedVolumeCount * 0.75),
+    },
+    baseWidth,
+    baseHeight,
+    depth,
+  });
+  rebuildScene(
+    sceneSpec,
+    getHoldRecords(),
+    [0xf2554e, 0x59c77b, 0x6389ed],
+    currentSeed,
+    currentMaterialSeed,
+  );
+  holdStatus.textContent = `Added ${sceneSpec.volumes.at(-1).name} at its default position.`;
+}
+
+function setHelpPanelOpen(open) {
+  helpPanel.hidden = !open;
+  helpToggle.setAttribute("aria-expanded", String(open));
+}
+
+helpToggle.addEventListener("click", () => {
+  setHelpPanelOpen(helpPanel.hidden);
+});
+helpClose.addEventListener("click", () => {
+  setHelpPanelOpen(false);
+  helpToggle.focus({ preventScroll: true });
+});
+
+function openAddMenu() {
+  if (holdMove) finishHoldMove(false);
+  if (holdRotation) finishHoldRotation(false);
+  addMenu.hidden = false;
+  addMenu.querySelector("button").focus();
+}
+
+function closeAddMenu(returnFocus = false) {
+  addMenu.hidden = true;
+  if (returnFocus) canvas.focus({ preventScroll: true });
+}
+
+addMenu.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-add-type]");
+  if (!button) return;
+  closeAddMenu(true);
+  if (button.dataset.addType === "volume") {
+    addVolume();
+  } else if (button.dataset.addType === "Microban" || button.dataset.addType === "CubeHold") {
+    addHold(button.dataset.addType);
+  }
+});
+
+document.addEventListener("pointerdown", (event) => {
+  if (!addMenu.hidden && !addMenu.contains(event.target)) closeAddMenu();
+});
 
 function applyHoldRotation(degrees) {
   if (!holdRotation || !selectedHold || !Number.isFinite(degrees)) return;
@@ -677,7 +858,7 @@ function finishHoldRotation(commit) {
   if (commit && selectedHold) {
     const holds = [];
     root.traverse((object) => {
-      if (object.userData.holdType === "Microban") holds.push(object);
+      if (isHold(object)) holds.push(object);
     });
     holdJson.value = serializeSceneData(holds);
     scrollJsonToHold(selectedHold.userData.jsonKey);
@@ -687,11 +868,58 @@ function finishHoldRotation(commit) {
   }
 }
 
-window.addEventListener("keydown", (event) => {
-  if (event.target instanceof HTMLElement && event.target.matches("input, textarea, select, [contenteditable='true']")) {
+function deleteSelectedHold() {
+  if (!selectedHold) return;
+  const deletedKey = selectedHold.userData.jsonKey;
+  if (holdMove?.newlyCreated) {
+    finishHoldMove(false);
+    holdStatus.textContent = `Deleted ${deletedKey}.`;
     return;
   }
-  if (event.key.toLowerCase() === "g" && !event.repeat) {
+  if (holdMove) finishHoldMove(false);
+  if (holdRotation) finishHoldRotation(false);
+  if (!selectedHold) return;
+
+  const hold = selectedHold;
+  setSelectedHold(null);
+  hold.removeFromParent();
+  hold.material.dispose();
+
+  const holds = [];
+  root.traverse((object) => {
+    if (isHold(object)) holds.push(object);
+  });
+  holdJson.value = serializeSceneData(holds);
+  holdCountInput.value = String(holds.length);
+  status.textContent = `Scene ${generation} · seed ${currentSeed} · ${holds.length} holds · ${currentSceneSpec.volumes.length} volumes`;
+  holdStatus.textContent = `Deleted ${deletedKey}.`;
+}
+
+window.addEventListener("keydown", (event) => {
+  const targetIsEditable = event.target instanceof HTMLElement
+    && event.target.matches("input, textarea, select, [contenteditable='true']");
+  const deletingFromTransformField = event.key.toLowerCase() === "x"
+    && (holdMoveControl.contains(event.target) || holdRotationControl.contains(event.target));
+  if (targetIsEditable && !deletingFromTransformField) {
+    return;
+  }
+  if (event.key === "?" && !event.repeat) {
+    event.preventDefault();
+    setHelpPanelOpen(helpPanel.hidden);
+  } else if (event.key === "Escape" && !helpPanel.hidden) {
+    event.preventDefault();
+    setHelpPanelOpen(false);
+  } else if (event.key.toLowerCase() === "x" && !event.repeat && selectedHold) {
+    event.preventDefault();
+    deleteSelectedHold();
+  } else if (event.key === "Escape" && !addMenu.hidden) {
+    event.preventDefault();
+    closeAddMenu(true);
+  } else if (event.shiftKey && event.key.toLowerCase() === "a" && !event.repeat) {
+    event.preventDefault();
+    if (addMenu.hidden) openAddMenu();
+    else closeAddMenu(true);
+  } else if (event.key.toLowerCase() === "g" && !event.repeat) {
     event.preventDefault();
     startHoldMove();
   } else if (event.key.toLowerCase() === "r" && !event.repeat) {
@@ -774,8 +1002,8 @@ function parseHoldRecords(data) {
     if (!hold || typeof hold !== "object" || Array.isArray(hold)) {
       throw new Error(`${name} must be a hold object.`);
     }
-    if (hold.type !== "microban_hold") {
-      throw new Error(`${name}.type must be "microban_hold".`);
+    if (hold.type !== "microban_hold" && hold.type !== "cube_hold") {
+      throw new Error(`${name}.type must be "microban_hold" or "cube_hold".`);
     }
 
     const { position, orientation } = hold;
@@ -792,13 +1020,16 @@ function parseHoldRecords(data) {
         throw new Error(`${name}.orientation.${angle} must be a finite number in radians.`);
       }
     }
-    if (
-      hold.color !== undefined
-      && (!Number.isInteger(hold.color) || hold.color < 0 || hold.color > 0xffffff)
+    let color = hold.color;
+    if (typeof color === "string" && /^#[\da-f]{6}$/i.test(color)) {
+      color = Number.parseInt(color.slice(1), 16);
+    } else if (
+      color !== undefined
+      && (!Number.isInteger(color) || color < 0 || color > 0xffffff)
     ) {
-      throw new Error(`${name}.color must be a 24-bit integer.`);
+      throw new Error(`${name}.color must be a 6-digit hexadecimal color string or a 24-bit integer.`);
     }
-    return { name, color: hold.color, position, orientation };
+    return { name, type: hold.type, color, position, orientation };
   });
 }
 
@@ -904,8 +1135,12 @@ function loadSceneFromJson() {
     materialSeed,
     holds: holdData,
   } = parseSceneData(holdJson.value);
-  if (holdData.length && !microbanGeometry) {
-    throw new Error("Microban hold mesh is not loaded yet.");
+  const missingHoldType = holdData.find((hold) => !holdGeometries[
+    hold.type === "cube_hold" ? "CubeHold" : "Microban"
+  ]);
+  if (missingHoldType) {
+    const typeName = missingHoldType.type === "cube_hold" ? "CubeHold" : "Microban";
+    throw new Error(`${typeName} hold mesh is not loaded yet.`);
   }
 
   if (!Number.isInteger(seed)) {
@@ -916,10 +1151,10 @@ function loadSceneFromJson() {
 }
 
 function makeHoldsFromRecords(holdData, holdColors) {
-  return holdData.map(({ name, color, position, orientation }, index) => {
-    const hold = makeMicrobanHold(color ?? holdColors[index % holdColors.length]);
+  return holdData.map(({ name, type, color, position, orientation }, index) => {
+    const holdType = type === "cube_hold" ? "CubeHold" : "Microban";
+    const hold = makeHold(holdType, color ?? holdColors[index % holdColors.length]);
     hold.name = name;
-    hold.userData.holdType = "Microban";
     hold.userData.jsonKey = name;
     hold.position.set(position.x, position.y, position.z);
     hold.quaternion.setFromEuler(
@@ -1010,7 +1245,7 @@ function rebuildScene(
   setSelectedHold(null);
   for (const child of [...root.children]) {
     child.traverse((object) => {
-      if (object.geometry && object.geometry !== microbanGeometry) {
+      if (object.geometry && !Object.values(holdGeometries).includes(object.geometry)) {
         object.geometry.dispose();
       }
       if (object.material) {
@@ -1218,27 +1453,16 @@ resize();
 render();
 
 try {
-  status.textContent = "Loading Microban hold mesh…";
-  microbanGeometry = await new STLLoader().loadAsync("../Assets/microban_hold.stl");
-  // Convert Blender coordinates (X, Y, Z) to Three.js coordinates (X, Z, -Y).
-  const conversion = new THREE.Matrix4().set(
-    1, 0, 0, 0,
-    0, 0, 1, 0,
-    0, -1, 0, 0,
-    0, 0, 0, 1,
-  );
-  microbanGeometry.applyMatrix4(conversion);
-  microbanGeometry.computeBoundingBox();
-  const bounds = microbanGeometry.boundingBox;
-  microbanGeometry.translate(
-    -(bounds.min.x + bounds.max.x) / 2,
-    -(bounds.min.y + bounds.max.y) / 2,
-    // The converted STL backface is the minimum-z plane; make it local z = 0.
-    -bounds.min.z,
-  );
-  microbanGeometry.computeVertexNormals();
+  status.textContent = "Loading hold meshes…";
+  const loader = new STLLoader();
+  const [microban, cubeHold] = await Promise.all([
+    loader.loadAsync("../Assets/microban_hold.stl"),
+    loader.loadAsync("../Assets/cubehold_blend.stl"),
+  ]);
+  holdGeometries.Microban = normalizeHoldGeometry(microban);
+  holdGeometries.CubeHold = normalizeHoldGeometry(cubeHold);
   rebuildScene();
 } catch (error) {
-  status.textContent = `Could not load the Microban STL: ${error instanceof Error ? error.message : String(error)}`;
+  status.textContent = `Could not load the hold meshes: ${error instanceof Error ? error.message : String(error)}`;
   status.dataset.error = "true";
 }

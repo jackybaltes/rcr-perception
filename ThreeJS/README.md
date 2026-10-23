@@ -21,10 +21,19 @@ the hold's current yaw. Press **Enter** or left-click to commit, or press
 Press **C** to reset the interactive camera to 1 m height and 2 m from the
 wall, matching the stereo camera's position convention, and aim it directly at
 the wall.
+Press **Shift+A** to open the add menu. Choose **Volume** to add a volume at its
+default position, or **MicrobanHold** or **CubeHold** to add that hold and
+immediately place it with face-snapping translation. Left-click or Enter
+commits the new hold; Escape or right-click cancels its placement and removes
+it. CubeHold uses `Assets/cubehold_blend.stl`.
+Press **X** to delete the selected hold. Click **Press ? for help** to open the
+control guide on the right side of the 3D view; click **?** again or press
+**Escape** to close it.
 
-The mesh in `Assets/microban_hold.stl` is loaded directly and used for every
-hold. The Blender wall generator uses half of each configured wall dimension,
-so the recreated wall is 5 m wide by 2.5 m high.
+The MicrobanHold and CubeHold meshes are loaded from
+`Assets/microban_hold.stl` and `Assets/cubehold_blend.stl`. The Blender wall
+generator uses half of each configured wall dimension, so the recreated wall
+is 5 m wide by 2.5 m high.
 Enable **Upd. Seed** beside the seed field to generate a fresh random seed on
 each **Regenerate scene** action; leave it unchecked to regenerate from the
 entered seed.
@@ -38,9 +47,11 @@ dimensions and origin marker, each volume's center and dimensions, the seed,
 material variation seed, and every hold's color, world position, and
 orientation. Edit the JSON and select
 **Load scene from JSON** to restore the wall, volumes, and holds. Hold records
-require a `microban_hold` type, finite `position` x/y/z values in meters, and
-finite `orientation` roll/pitch/yaw values in radians. Older hold-only JSON
-files are still accepted and retain the current wall and volumes.
+require a `microban_hold` or `cube_hold` type, finite `position` x/y/z values
+in meters, and finite `orientation` roll/pitch/yaw values in radians. Older
+hold-only JSON files are still accepted and retain the current wall and volumes.
+Hold colors are serialized as `#RRGGBB` hexadecimal strings; legacy 24-bit
+integer colors remain accepted when loading.
 Use **Load scene from disk** to restore a saved scene, or **Save scene to disk**
 to download the current JSON as `climbing-scene.json`.
 Above the JSON field, a side-by-side front stereo preview shows the wall from

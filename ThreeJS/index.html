@@ -41,6 +41,12 @@
       </header>
       <section class="viewport" aria-label="Interactive 3D climbing wall">
         <canvas id="scene" tabindex="0"></canvas>
+        <div id="add-menu" class="add-menu" role="menu" aria-label="Add to scene" hidden>
+          <strong>Add to scene</strong>
+          <button type="button" role="menuitem" data-add-type="volume">Volume</button>
+          <button type="button" role="menuitem" data-add-type="Microban">MicrobanHold</button>
+          <button type="button" role="menuitem" data-add-type="CubeHold">CubeHold</button>
+        </div>
         <div id="hold-move-control" class="hold-transform-control hold-move-control" hidden>
           <label for="hold-move-x">X</label>
           <input id="hold-move-x" type="number" step="0.001" aria-label="Hold X position in meters">
@@ -56,8 +62,23 @@
           <span>°</span>
           <small>Rotate around the face normal · Left-click or Enter to finish · Esc or right-click to cancel</small>
         </label>
+        <aside id="help-panel" class="help-panel" aria-labelledby="help-title" hidden>
+          <h2 id="help-title">Climbing wall controls</h2>
+          <button id="help-close" class="help-close" type="button" aria-label="Close help">×</button>
+          <ul>
+            <li>Click a hold to select it and reveal its JSON record.</li>
+            <li><kbd>G</kbd> moves the selected hold; move over a wall or volume face to snap.</li>
+            <li>Edit X/Y/Z, then press <kbd>Enter</kbd> or left-click to finish.</li>
+            <li><kbd>R</kbd> rotates the selected hold; enter an absolute yaw angle.</li>
+            <li><kbd>X</kbd> deletes the selected hold.</li>
+            <li><kbd>Shift</kbd>+<kbd>A</kbd> opens the add menu for a volume, MicrobanHold, or CubeHold.</li>
+            <li><kbd>C</kbd> resets the camera to 1 m height and 2 m from the wall.</li>
+            <li><kbd>Esc</kbd> or right-click cancels a transform.</li>
+            <li>Drag to orbit, scroll to zoom, and right-drag to pan.</li>
+          </ul>
+        </aside>
         <div id="status" class="status" role="status">Preparing scene…</div>
-        <div class="hint">Click a hold · G moves with X/Y/Z · R rotates on its face · C resets camera · left-click/Enter finishes · Esc/right-click cancels · Drag to orbit · Scroll to zoom · Right-drag to pan</div>
+        <button id="help-toggle" class="help-toggle" type="button" aria-controls="help-panel" aria-expanded="false">Press ? for help</button>
       </section>
       <section class="stereo-panel" aria-labelledby="stereo-label">
         <div class="stereo-heading">
