@@ -15,8 +15,9 @@ the hold; the X/Y/Z boxes also allow direct coordinate entry. Press **Enter**
 or left-click to commit, or press **Esc** or right-click to cancel and restore
 the original transform. Press **R** with a hold selected to rotate it around
 the backplate normal while keeping the backplate attached to its face. Move the
-mouse horizontally or enter an angle in the backplate-angle textbox; press
-**Enter** or left-click to commit, or press **Esc** or right-click to cancel.
+mouse horizontally or enter an absolute yaw angle in the textbox; it starts at
+the hold's current yaw. Press **Enter** or left-click to commit, or press
+**Esc** or right-click to cancel.
 
 The mesh in `Assets/microban_hold.stl` is loaded directly and used for every
 hold. The Blender wall generator uses half of each configured wall dimension,

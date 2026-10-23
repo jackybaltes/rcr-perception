@@ -103,7 +103,8 @@ body {
 
 .hold-transform-control {
   position: absolute;
-  top: 16px;
+  top: auto;
+  bottom: 58px;
   left: 50%;
   z-index: 1;
   display: flex;

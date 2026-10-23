@@ -600,9 +600,10 @@ function finishHoldMove(commit) {
 function applyHoldRotation(degrees) {
   if (!holdRotation || !selectedHold || !Number.isFinite(degrees)) return;
   holdRotation.angle = degrees;
+  const relativeAngle = degrees - holdRotation.initialYaw;
   const twist = new THREE.Quaternion().setFromAxisAngle(
     new THREE.Vector3(0, 0, 1),
-    THREE.MathUtils.degToRad(degrees),
+    THREE.MathUtils.degToRad(relativeAngle),
   );
   const anchorWorld = selectedHold.localToWorld(holdRotation.backplateAnchor.clone());
   selectedHold.quaternion.copy(holdRotation.quaternion).multiply(twist);
@@ -618,7 +619,7 @@ function applyHoldRotation(degrees) {
   }
   selectedHold.updateMatrixWorld(true);
   holdRotationInput.value = degrees.toFixed(1);
-  holdStatus.textContent = `Rotating ${selectedHold.userData.jsonKey} around its backplate normal · ${degrees.toFixed(1)}° · click or press Enter to finish, Esc to cancel.`;
+  holdStatus.textContent = `Rotating ${selectedHold.userData.jsonKey} · yaw ${degrees.toFixed(1)}° · click or press Enter to finish, Esc to cancel.`;
 }
 
 function startHoldRotation() {
@@ -631,23 +632,28 @@ function startHoldRotation() {
     (bounds.min.y + bounds.max.y) / 2,
     bounds.min.z,
   );
+  const currentYaw = THREE.MathUtils.radToDeg(
+    new THREE.Euler().setFromQuaternion(selectedHold.quaternion, "XYZ").z,
+  );
   holdRotation = {
     quaternion: selectedHold.quaternion.clone(),
     backplateAnchor,
     pointerX: lastPointerX,
-    angle: 0,
+    initialYaw: currentYaw,
+    angle: currentYaw,
   };
   controls.enabled = false;
   holdRotationControl.hidden = false;
-  holdRotationInput.value = "0.0";
+  holdRotationInput.value = currentYaw.toFixed(1);
   holdRotationInput.focus();
   holdRotationInput.select();
   canvas.style.cursor = "ew-resize";
-  holdStatus.textContent = `Rotating ${selectedHold.userData.jsonKey} around its backplate normal · 0.0° · move mouse horizontally, click or press Enter to finish.`;
+  holdStatus.textContent = `Rotating ${selectedHold.userData.jsonKey} · yaw ${currentYaw.toFixed(1)}° · move mouse horizontally, click or press Enter to finish.`;
 }
 
 function finishHoldRotation(commit) {
   if (!holdRotation) return;
+  const initialYaw = holdRotation.initialYaw;
   if (!commit && selectedHold) {
     selectedHold.quaternion.copy(holdRotation.quaternion);
   }
@@ -655,7 +661,7 @@ function finishHoldRotation(commit) {
   holdRotation = null;
   controls.enabled = true;
   holdRotationControl.hidden = true;
-  holdRotationInput.value = "0.0";
+  holdRotationInput.value = initialYaw.toFixed(1);
   canvas.style.cursor = "";
   if (commit && selectedHold) {
     const holds = [];
@@ -1087,7 +1093,9 @@ canvas.addEventListener("pointerup", (event) => {
 canvas.addEventListener("pointermove", (event) => {
   lastPointerX = event.clientX;
   if (holdRotation) {
-    applyHoldRotation((event.clientX - holdRotation.pointerX) * 0.5);
+    applyHoldRotation(
+      holdRotation.initialYaw + (event.clientX - holdRotation.pointerX) * 0.5,
+    );
     canvas.style.cursor = "ew-resize";
     return;
   }
