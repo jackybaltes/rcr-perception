@@ -39,6 +39,7 @@ import climbing_wall
 import volume
 import screenshot
 import cube_hold
+import microban_hold
 import rcr_materials
 
 seed = 42
@@ -139,7 +140,8 @@ def test4(name, NN=10):
     for i in range(NN):
         r = rng.random()
         if r < 0.33:
-            hold = cube_hold.create_cube_hold_center(f"HoldCenter_{i}", rng=rng)
+            #hold = cube_hold.create_cube_hold_center(f"HoldCenter_{i}", rng=rng)
+            hold = microban_hold.create_microban_hold_center(f"HoldCenter_{i}")
             mat = MAT_CENTER
         elif r < 0.66:
             hold = cube_hold.create_cube_hold_right(f"HoldRight_{i}", rng=rng)
