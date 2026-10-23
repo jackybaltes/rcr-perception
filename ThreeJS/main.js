@@ -341,6 +341,7 @@ function addHolds(group, surfaces, count, seed) {
   const placed = [];
   const holds = [];
   const colors = [0xf2554e, 0x59c77b, 0x6389ed];
+  const faceRotations = [-Math.PI / 4, 0, Math.PI / 4];
 
   for (let i = 0; i < count; i += 1) {
     let hold;
@@ -349,11 +350,13 @@ function addHolds(group, surfaces, count, seed) {
       const color = colors[Math.floor(random() * colors.length)];
       hold = makeMicrobanHold(color);
       const { point, normal } = sampleSurface(surfaces, random);
+      // The STL's backface is normalized to local z = 0, so this anchors it
+      // directly on the sampled face.
       hold.position.copy(point);
       // Blender's local -Y outward axis maps to Three.js local +Z.
       hold.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
-      hold.rotateZ(random() * Math.PI * 2);
-      hold.rotateZ(Math.PI);
+      const faceRotation = faceRotations[Math.floor(random() * faceRotations.length)];
+      hold.rotateZ(faceRotation);
 
       const center = hold.position;
       const radius = 0.04;
@@ -704,6 +707,7 @@ try {
   microbanGeometry.translate(
     -(bounds.min.x + bounds.max.x) / 2,
     -(bounds.min.y + bounds.max.y) / 2,
+    // The converted STL backface is the minimum-z plane; make it local z = 0.
     -bounds.min.z,
   );
   microbanGeometry.computeVertexNormals();

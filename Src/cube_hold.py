@@ -20,6 +20,8 @@ except ImportError:  # pragma: no cover - only exercised when Blender is absent.
 
 import rcr_materials
 
+HOLD_FACE_ROTATIONS = (-math.pi / 4, 0.0, math.pi / 4)
+
 
 def _require_blender():
     if bpy is None or bmesh is None:
@@ -414,8 +416,8 @@ def select_random_coordinate(face_obj, face_index, rng=None):
     return points[0].copy()
 
 
-def add_hold_to_face(hold_obj, face_obj, face_index, pt=None, angle=0.0, rng=None):
-    """Place a hold on a mesh face, with its local -Y axis facing outward."""
+def add_hold_to_face(hold_obj, face_obj, face_index, pt=None, angle=None, rng=None):
+    """Place a hold facing outward, with a face-relative rotation in radians."""
     if hold_obj.type != 'MESH' or face_obj.type != 'MESH':
         raise TypeError("hold_obj and face_obj must be mesh objects")
 
@@ -430,6 +432,13 @@ def add_hold_to_face(hold_obj, face_obj, face_index, pt=None, angle=0.0, rng=Non
 
     if rng is None:
         rng = random.Random()
+    if angle is None:
+        angle = rng.choice(HOLD_FACE_ROTATIONS)
+    elif angle not in HOLD_FACE_ROTATIONS:
+        raise ValueError(
+            "angle must be one of -pi/4, 0, or pi/4 radians "
+            "(-45, 0, or 45 degrees)"
+        )
 
     face = face_obj.data.polygons[face_index]
     normal_matrix = face_obj.matrix_world.to_3x3().inverted().transposed()
@@ -458,4 +467,3 @@ def add_hold_to_face(hold_obj, face_obj, face_index, pt=None, angle=0.0, rng=Non
     hold_obj.matrix_world = world_matrix
 
     return hold_obj
-

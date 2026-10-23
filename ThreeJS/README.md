@@ -5,6 +5,8 @@ rebuilds the climbing wall, origin marker, triangular volumes, and seeded hold
 layout in Three.js. The original Blender `.blend` file is not loaded in the
 browser; the wall and volumes are generated from the dimensions and procedures
 in `Src/`.
+Generated holds use only -45, 0, or +45 degree rotations relative to their
+face. Their backfaces are anchored flush to the sampled wall or volume surface.
 
 The mesh in `Assets/microban_hold.stl` is loaded directly and used for every
 hold. The Blender wall generator uses half of each configured wall dimension,
