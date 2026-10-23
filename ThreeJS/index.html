@@ -30,7 +30,7 @@
           </label>
           <label>
             Holds
-            <input id="hold-count" type="number" value="10" min="0" max="30" step="1">
+            <input id="hold-count" type="number" value="10" min="0" max="50" step="1">
           </label>
           <button id="regenerate" type="submit">Regenerate scene</button>
         </form>
@@ -39,6 +39,39 @@
         <canvas id="scene"></canvas>
         <div id="status" class="status" role="status">Preparing scene…</div>
         <div class="hint">Drag to orbit · Scroll to zoom · Right-drag to pan</div>
+      </section>
+      <section class="stereo-panel" aria-labelledby="stereo-label">
+        <div class="stereo-heading">
+          <h2 id="stereo-label">Front stereo camera</h2>
+          <span id="stereo-readout">Height 1.25 m · distance 2 m</span>
+        </div>
+        <div class="stereo-controls">
+          <label>
+            Camera height (m)
+            <input id="stereo-height" type="number" value="1.25" min="0" step="0.05">
+          </label>
+          <label>
+            Distance to wall (m)
+            <input id="stereo-distance" type="number" value="2" min="0.05" step="0.1">
+          </label>
+          <button id="save-stereo" type="button">Save stereo view as PNG</button>
+        </div>
+        <div id="stereo-status" class="stereo-status" role="status" aria-live="polite"></div>
+        <canvas id="stereo-scene" aria-label="Side-by-side stereo camera view"></canvas>
+      </section>
+      <section class="hold-data" aria-labelledby="hold-data-label">
+        <div class="hold-data-heading">
+          <label id="hold-data-label" for="hold-json">Hold data (JSON)</label>
+          <span>Position in meters · orientation as XYZ Euler angles (roll, pitch, yaw) in radians</span>
+        </div>
+        <textarea id="hold-json" rows="8" spellcheck="false" aria-describedby="hold-data-label">{}</textarea>
+        <div class="hold-data-actions">
+          <input id="hold-json-file" type="file" accept=".json,application/json" hidden>
+          <button id="load-holds-file" type="button">Load from disk</button>
+          <button id="save-holds-file" type="button">Save to disk</button>
+          <button id="load-holds" type="button">Load holds from JSON</button>
+          <div id="hold-status" role="status" aria-live="polite"></div>
+        </div>
       </section>
     </main>
   </body>
