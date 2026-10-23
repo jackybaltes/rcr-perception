@@ -29,6 +29,7 @@ const saveStereoButton = document.querySelector("#save-stereo");
 const status = document.querySelector("#status");
 const form = document.querySelector("#scene-controls");
 const seedInput = document.querySelector("#seed");
+const updateSeedInput = document.querySelector("#update-seed");
 const holdCountInput = document.querySelector("#hold-count");
 const holdJson = document.querySelector("#hold-json");
 const loadHoldsButton = document.querySelector("#load-holds");
@@ -1141,7 +1142,10 @@ saveStereoButton.addEventListener("click", () => {
 form.addEventListener("submit", (event) => {
   event.preventDefault();
   try {
-    rebuildScene();
+    const seed = updateSeedInput.checked
+      ? crypto.getRandomValues(new Uint32Array(1))[0]
+      : Number(seedInput.value);
+    rebuildScene(undefined, null, undefined, seed);
   } catch (error) {
     status.textContent = error instanceof Error ? error.message : String(error);
     status.dataset.error = "true";

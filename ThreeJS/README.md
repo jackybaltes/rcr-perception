@@ -22,6 +22,9 @@ the hold's current yaw. Press **Enter** or left-click to commit, or press
 The mesh in `Assets/microban_hold.stl` is loaded directly and used for every
 hold. The Blender wall generator uses half of each configured wall dimension,
 so the recreated wall is 5 m wide by 2.5 m high.
+Enable **Upd. Seed** beside the seed field to generate a fresh random seed on
+each **Regenerate scene** action; leave it unchecked to regenerate from the
+entered seed.
 Each scene regeneration creates new wall and volume materials with randomized
 HSV colors and noise ranges corresponding to the Blender
 `create_rock_material_with_noise` configuration in `Src/script_in_blender.py`.

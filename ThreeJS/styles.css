@@ -61,7 +61,7 @@ body {
   font-size: 11px;
 }
 
-.controls input {
+.controls input[type="number"] {
   width: 90px;
   height: 36px;
   padding: 0 9px;
@@ -71,6 +71,21 @@ body {
   color: #f1f4f5;
   font: inherit;
   font-size: 13px;
+}
+
+.controls .seed-update {
+  display: flex;
+  height: 36px;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.controls .seed-update input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: #d3e75c;
 }
 
 .controls button {
@@ -382,7 +397,7 @@ body {
     flex: 1;
   }
 
-  .controls input {
+  .controls input[type="number"] {
     width: 100%;
   }
 
