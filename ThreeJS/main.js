@@ -5,6 +5,19 @@ import { STLLoader } from "three/addons/loaders/STLLoader.js";
 const WALL_WIDTH = 5;
 const WALL_HEIGHT = 2.5;
 const WALL_DEPTH = 0.025;
+const DEFAULT_SCENE = {
+  wall: {
+    width: WALL_WIDTH,
+    height: WALL_HEIGHT,
+    depth: WALL_DEPTH,
+    originMarker: { width: 1, height: 1, x: 0.5, y: 0.5 },
+  },
+  volumes: [
+    { name: "Volume_0", center: { x: -1.35, y: 0.72 }, baseWidth: 0.75, baseHeight: 0.65, depth: 0.24 },
+    { name: "Volume_1", center: { x: 0.05, y: 1.72 }, baseWidth: 0.75, baseHeight: 0.65, depth: 0.24 },
+    { name: "Volume_2", center: { x: 1.35, y: 0.78 }, baseWidth: 0.75, baseHeight: 0.65, depth: 0.24 },
+  ],
+};
 const canvas = document.querySelector("#scene");
 const stereoCanvas = document.querySelector("#stereo-scene");
 const stereoHeightInput = document.querySelector("#stereo-height");
@@ -50,7 +63,7 @@ stereoRenderer.outputColorSpace = THREE.SRGBColorSpace;
 stereoRenderer.toneMapping = THREE.ACESFilmicToneMapping;
 stereoRenderer.toneMappingExposure = 1.1;
 
-const wallFront = WALL_DEPTH / 2;
+let wallFront = WALL_DEPTH / 2;
 const stereoEyeSeparation = 0.064;
 const stereoTarget = new THREE.Vector3();
 const stereoLeftCamera = new THREE.PerspectiveCamera(74, 1, 0.01, 100);
@@ -123,6 +136,13 @@ const root = new THREE.Group();
 scene.add(root);
 let microbanGeometry = null;
 let generation = 0;
+let selectedHold = null;
+let currentSceneSpec = structuredClone(DEFAULT_SCENE);
+let currentSeed = 42;
+let currentMaterialSeed = 0;
+const raycaster = new THREE.Raycaster();
+const pointerPosition = new THREE.Vector2();
+let pointerDownPosition = null;
 
 function seededRandom(seed) {
   let state = seed >>> 0;
@@ -179,18 +199,18 @@ function createRockMaterial(rng, colorHsvLimits, noiseParameters) {
   return material;
 }
 
-function addWall(group, material) {
+function addWall(group, material, wallSpec) {
   const wall = new THREE.Mesh(
-    new THREE.BoxGeometry(WALL_WIDTH, WALL_HEIGHT, WALL_DEPTH),
+    new THREE.BoxGeometry(wallSpec.width, wallSpec.height, wallSpec.depth),
     material,
   );
   wall.name = "TestWall";
-  wall.position.y = WALL_HEIGHT / 2;
+  wall.position.y = wallSpec.height / 2;
   wall.receiveShadow = true;
   group.add(wall);
 
   const square = new THREE.Mesh(
-    new THREE.PlaneGeometry(1, 1),
+    new THREE.PlaneGeometry(wallSpec.originMarker.width, wallSpec.originMarker.height),
     new THREE.MeshBasicMaterial({
       color: 0xff3030,
       transparent: true,
@@ -199,7 +219,11 @@ function addWall(group, material) {
     }),
   );
   square.name = "TestWall_OriginSquare";
-  square.position.set(0.5, 0.5, WALL_DEPTH / 2 + 0.001);
+  square.position.set(
+    wallSpec.originMarker.x,
+    wallSpec.originMarker.y,
+    wallSpec.depth / 2 + 0.001,
+  );
   group.add(square);
 }
 
@@ -240,16 +264,15 @@ function makeTriangleSurface(a, b, c, material, name, group, surfaces, volumeCen
   }
 }
 
-function addPyramidVolume(group, surfaces, index, centerX, centerY, material) {
-  const width = 0.75;
-  const height = 0.65;
-  const frontZ = WALL_DEPTH / 2;
+function addPyramidVolume(group, surfaces, volumeSpec, wallSpec, material) {
+  const { center, baseWidth, baseHeight, depth } = volumeSpec;
+  const frontZ = wallSpec.depth / 2;
   const base = [
-    new THREE.Vector3(centerX - width / 2, centerY - height / 2, frontZ),
-    new THREE.Vector3(centerX + width / 2, centerY - height / 2, frontZ),
-    new THREE.Vector3(centerX, centerY + height / 2, frontZ),
+    new THREE.Vector3(center.x - baseWidth / 2, center.y - baseHeight / 2, frontZ),
+    new THREE.Vector3(center.x + baseWidth / 2, center.y - baseHeight / 2, frontZ),
+    new THREE.Vector3(center.x, center.y + baseHeight / 2, frontZ),
   ];
-  const apex = new THREE.Vector3(centerX, centerY, frontZ + 0.24);
+  const apex = new THREE.Vector3(center.x, center.y, frontZ + depth);
   const volumeCenter = base[0].clone()
     .add(base[1])
     .add(base[2])
@@ -266,7 +289,7 @@ function addPyramidVolume(group, surfaces, index, centerX, centerY, material) {
     makeTriangleSurface(
       ...triangle,
       material,
-      `Volume_${index}_face_${faceIndex}`,
+      `${volumeSpec.name}_face_${faceIndex}`,
       group,
       surfaces,
       volumeCenter,
@@ -382,17 +405,20 @@ function addHolds(group, surfaces, count, seed) {
   return holds;
 }
 
-function serializeHoldTransforms(holds) {
+function serializeSceneData(holds) {
   const round = (value) => Number(value.toFixed(6));
-  const result = {};
+  const holdData = {};
   holds.forEach((hold, index) => {
+    const key = hold.userData.jsonKey ?? `hold_${index + 1}`;
     const position = hold.getWorldPosition(new THREE.Vector3());
     const orientation = new THREE.Euler().setFromQuaternion(
       hold.getWorldQuaternion(new THREE.Quaternion()),
       "XYZ",
     );
-    result[`hold_${index + 1}`] = {
+    hold.userData.jsonKey = key;
+    holdData[key] = {
       type: "microban_hold",
+      color: hold.material.color.getHex(),
       position: {
         x: round(position.x),
         y: round(position.y),
@@ -405,15 +431,61 @@ function serializeHoldTransforms(holds) {
       },
     };
   });
-  return JSON.stringify(result, null, 2);
+  return JSON.stringify({
+    formatVersion: 1,
+    seed: currentSeed,
+    materialSeed: currentMaterialSeed,
+    scene: currentSceneSpec,
+    holds: holdData,
+  }, null, 2);
 }
 
-function parseHoldData(json) {
-  const data = JSON.parse(json);
-  if (!data || typeof data !== "object" || Array.isArray(data)) {
-    throw new Error("Hold JSON must be an object keyed by hold name.");
+function setSelectedHold(hold) {
+  if (selectedHold) {
+    selectedHold.material.emissive.copy(selectedHold.userData.baseEmissive);
+    selectedHold.material.emissiveIntensity = selectedHold.userData.baseEmissiveIntensity;
   }
 
+  selectedHold = hold;
+  if (!selectedHold) return;
+
+  selectedHold.userData.baseEmissive = selectedHold.material.emissive.clone();
+  selectedHold.userData.baseEmissiveIntensity = selectedHold.material.emissiveIntensity;
+  selectedHold.material.emissive.set(0xffed68);
+  selectedHold.material.emissiveIntensity = 2.5;
+
+  const key = selectedHold.userData.jsonKey;
+  holdStatus.textContent = `Selected ${key}.`;
+  delete holdStatus.dataset.error;
+  const keyStart = holdJson.value.indexOf(`${JSON.stringify(key)}:`);
+  if (keyStart < 0) return;
+
+  const lineNumber = holdJson.value.slice(0, keyStart).split("\n").length - 1;
+  const lineHeight = Number.parseFloat(getComputedStyle(holdJson).lineHeight);
+  holdJson.scrollTop = lineNumber * lineHeight;
+  holdJson.focus({ preventScroll: true });
+  holdJson.setSelectionRange(keyStart, keyStart + JSON.stringify(key).length);
+}
+
+function findHoldAtPointer(event) {
+  const bounds = canvas.getBoundingClientRect();
+  pointerPosition.set(
+    ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+    -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
+  );
+  raycaster.setFromCamera(pointerPosition, camera);
+  const [intersection] = raycaster.intersectObject(root, true);
+  let candidate = intersection?.object ?? null;
+  while (candidate && candidate.userData.holdType !== "Microban") {
+    candidate = candidate.parent;
+  }
+  return candidate;
+}
+
+function parseHoldRecords(data) {
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error("holds must be an object keyed by hold name.");
+  }
   const entries = Object.entries(data);
   if (entries.length > 50) {
     throw new Error("Hold JSON can contain at most 50 holds.");
@@ -441,21 +513,135 @@ function parseHoldData(json) {
         throw new Error(`${name}.orientation.${angle} must be a finite number in radians.`);
       }
     }
-    return { name, position, orientation };
+    if (
+      hold.color !== undefined
+      && (!Number.isInteger(hold.color) || hold.color < 0 || hold.color > 0xffffff)
+    ) {
+      throw new Error(`${name}.color must be a 24-bit integer.`);
+    }
+    return { name, color: hold.color, position, orientation };
   });
 }
 
-function loadHoldsFromJson() {
-  const holdData = parseHoldData(holdJson.value);
+function parseSceneData(json) {
+  const data = JSON.parse(json);
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error("Scene JSON must be an object.");
+  }
+
+  if (data.formatVersion !== 1) {
+    if (Object.hasOwn(data, "formatVersion")) {
+      throw new Error(`Unsupported scene JSON format version: ${data.formatVersion}`);
+    }
+    return {
+      scene: structuredClone(currentSceneSpec),
+      seed: currentSeed,
+      materialSeed: currentMaterialSeed,
+      holds: parseHoldRecords(data),
+    };
+  }
+
+  const { wall, volumes } = data.scene ?? {};
+  if (!wall || !Array.isArray(volumes)) {
+    throw new Error("Scene JSON must include wall and volumes data.");
+  }
+  if (!Number.isInteger(data.seed)) {
+    throw new Error("seed must be a whole number.");
+  }
+  if (!Number.isInteger(data.materialSeed) || data.materialSeed < 0 || data.materialSeed > 0xffffffff) {
+    throw new Error("materialSeed must be an unsigned 32-bit integer.");
+  }
+  const requirePositive = (value, label) => {
+    if (!Number.isFinite(value) || value <= 0) {
+      throw new Error(`${label} must be a positive number.`);
+    }
+  };
+  for (const dimension of ["width", "height", "depth"]) {
+    requirePositive(wall[dimension], `scene.wall.${dimension}`);
+  }
+  const marker = wall.originMarker;
+  if (!marker || typeof marker !== "object") {
+    throw new Error("scene.wall.originMarker must be an object.");
+  }
+  requirePositive(marker.width, "scene.wall.originMarker.width");
+  requirePositive(marker.height, "scene.wall.originMarker.height");
+  for (const axis of ["x", "y"]) {
+    if (!Number.isFinite(marker[axis])) {
+      throw new Error(`scene.wall.originMarker.${axis} must be a finite number.`);
+    }
+  }
+  if (volumes.length > 50) {
+    throw new Error("Scene JSON can contain at most 50 volumes.");
+  }
+  const volumeNames = new Set();
+  volumes.forEach((volume, index) => {
+    const label = `scene.volumes[${index}]`;
+    if (!volume || typeof volume !== "object" || typeof volume.name !== "string" || !volume.name) {
+      throw new Error(`${label}.name must be a non-empty string.`);
+    }
+    if (volumeNames.has(volume.name)) {
+      throw new Error(`${label}.name must be unique.`);
+    }
+    volumeNames.add(volume.name);
+    if (!volume.center || typeof volume.center !== "object") {
+      throw new Error(`${label}.center must be an object.`);
+    }
+    for (const axis of ["x", "y"]) {
+      if (!Number.isFinite(volume.center[axis])) {
+        throw new Error(`${label}.center.${axis} must be a finite number.`);
+      }
+    }
+    for (const dimension of ["baseWidth", "baseHeight", "depth"]) {
+      requirePositive(volume[dimension], `${label}.${dimension}`);
+    }
+  });
+
+  return {
+    scene: {
+      wall: {
+        width: wall.width,
+        height: wall.height,
+        depth: wall.depth,
+        originMarker: { ...marker },
+      },
+      volumes: volumes.map((volume) => ({
+        name: volume.name,
+        center: { ...volume.center },
+        baseWidth: volume.baseWidth,
+        baseHeight: volume.baseHeight,
+        depth: volume.depth,
+      })),
+    },
+    seed: data.seed,
+    materialSeed: data.materialSeed,
+    holds: parseHoldRecords(data.holds),
+  };
+}
+
+function loadSceneFromJson() {
+  const {
+    scene: sceneSpec,
+    seed,
+    materialSeed,
+    holds: holdData,
+  } = parseSceneData(holdJson.value);
   if (holdData.length && !microbanGeometry) {
     throw new Error("Microban hold mesh is not loaded yet.");
   }
 
+  if (!Number.isInteger(seed)) {
+    throw new Error("seed must be a whole number.");
+  }
   const holdColors = [0xf2554e, 0x59c77b, 0x6389ed];
-  const newHolds = holdData.map(({ name, position, orientation }, index) => {
-    const hold = makeMicrobanHold(holdColors[index % holdColors.length]);
+  rebuildScene(sceneSpec, holdData, holdColors, seed, materialSeed);
+}
+
+function makeHoldsFromRecords(holdData, holdColors) {
+  return holdData.map(({ name, color, position, orientation }, index) => {
+    const hold = makeMicrobanHold(color ?? holdColors[index % holdColors.length]);
     hold.name = name;
     hold.userData.holdType = "Microban";
+    hold.userData.jsonKey = name;
     hold.position.set(position.x, position.y, position.z);
     hold.quaternion.setFromEuler(
       new THREE.Euler(
@@ -467,25 +653,6 @@ function loadHoldsFromJson() {
     );
     return hold;
   });
-
-  for (const child of [...root.children]) {
-    if (child.userData.holdType !== "Microban") continue;
-    root.remove(child);
-    child.material.dispose();
-  }
-  if (newHolds.length > 0) {
-    root.add(...newHolds);
-  }
-  root.updateMatrixWorld(true);
-  holdCountInput.value = String(newHolds.length);
-  holdJson.value = serializeHoldTransforms(newHolds);
-  generation += 1;
-  status.textContent = `Scene ${generation} · loaded ${newHolds.length} holds · 3 volumes`;
-  delete status.dataset.error;
-  holdStatus.textContent = `Loaded ${newHolds.length} holds from JSON.`;
-  delete holdStatus.dataset.error;
-  renderer.render(scene, camera);
-  renderStereoView();
 }
 
 function addGround() {
@@ -500,9 +667,14 @@ function addGround() {
   scene.add(ground);
 }
 
-function rebuildScene() {
-  const seed = Number(seedInput.value);
-  const holdCount = Number(holdCountInput.value);
+function rebuildScene(
+  sceneSpec = structuredClone(currentSceneSpec),
+  holdRecords = null,
+  holdColors = [0xf2554e, 0x59c77b, 0x6389ed],
+  seed = Number(seedInput.value),
+  materialSeed = (seed ^ Math.imul(generation + 1, 0x9e3779b9)) >>> 0,
+) {
+  const holdCount = holdRecords ? holdRecords.length : Number(holdCountInput.value);
   if (!Number.isFinite(seed) || !Number.isInteger(holdCount) || holdCount < 0 || holdCount > 50) {
     status.textContent = "Enter a whole-number seed and a hold count from 0 to 50.";
     status.dataset.error = "true";
@@ -510,9 +682,7 @@ function rebuildScene() {
   }
 
   const nextRoot = new THREE.Group();
-  const materialRng = seededRandom(
-    (seed ^ Math.imul(generation + 1, 0x9e3779b9)) >>> 0,
-  );
+  const materialRng = seededRandom(materialSeed);
   const noiseParameters = [[10, 20], [2, 10], [0.5, 0.9], [0.1, 0.9]];
   const wallMaterial = createRockMaterial(
     materialRng,
@@ -524,40 +694,39 @@ function rebuildScene() {
     [[0.5, 0.1, 0.1], [0.85, 0.4, 0.5]],
     noiseParameters,
   );
+  const { wall: wallSpec, volumes: volumeSpecs } = sceneSpec;
   const surfaces = [];
-  const frontZ = WALL_DEPTH / 2;
+  const frontZ = wallSpec.depth / 2;
   surfaces.push({
     points: [
-      new THREE.Vector3(-WALL_WIDTH / 2, 0, frontZ),
-      new THREE.Vector3(WALL_WIDTH / 2, 0, frontZ),
-      new THREE.Vector3(WALL_WIDTH / 2, WALL_HEIGHT, frontZ),
+      new THREE.Vector3(-wallSpec.width / 2, 0, frontZ),
+      new THREE.Vector3(wallSpec.width / 2, 0, frontZ),
+      new THREE.Vector3(wallSpec.width / 2, wallSpec.height, frontZ),
     ],
     normal: new THREE.Vector3(0, 0, 1),
-    area: WALL_WIDTH * WALL_HEIGHT / 2,
+    area: wallSpec.width * wallSpec.height / 2,
   });
   surfaces.push({
     points: [
-      new THREE.Vector3(-WALL_WIDTH / 2, 0, frontZ),
-      new THREE.Vector3(WALL_WIDTH / 2, WALL_HEIGHT, frontZ),
-      new THREE.Vector3(-WALL_WIDTH / 2, WALL_HEIGHT, frontZ),
+      new THREE.Vector3(-wallSpec.width / 2, 0, frontZ),
+      new THREE.Vector3(wallSpec.width / 2, wallSpec.height, frontZ),
+      new THREE.Vector3(-wallSpec.width / 2, wallSpec.height, frontZ),
     ],
     normal: new THREE.Vector3(0, 0, 1),
-    area: WALL_WIDTH * WALL_HEIGHT / 2,
+    area: wallSpec.width * wallSpec.height / 2,
   });
 
-  addWall(nextRoot, wallMaterial);
-  const volumePositions = [
-    [-1.35, 0.72],
-    [0.05, 1.72],
-    [1.35, 0.78],
-  ];
-  volumePositions.forEach(([x, y], index) => {
-    addPyramidVolume(nextRoot, surfaces, index, x, y, volumeMaterial);
+  addWall(nextRoot, wallMaterial, wallSpec);
+  volumeSpecs.forEach((volumeSpec) => {
+    addPyramidVolume(nextRoot, surfaces, volumeSpec, wallSpec, volumeMaterial);
   });
-  const holds = addHolds(nextRoot, surfaces, holdCount, seed);
+  const holds = holdRecords
+    ? makeHoldsFromRecords(holdRecords, holdColors)
+    : addHolds(nextRoot, surfaces, holdCount, seed);
+  if (holdRecords) nextRoot.add(...holds);
   nextRoot.updateMatrixWorld(true);
-  const holdDataJson = serializeHoldTransforms(holds);
 
+  setSelectedHold(null);
   for (const child of [...root.children]) {
     child.traverse((object) => {
       if (object.geometry && object.geometry !== microbanGeometry) {
@@ -574,9 +743,16 @@ function rebuildScene() {
   }
   root.clear();
   root.add(nextRoot);
-  holdJson.value = holdDataJson;
+  currentSceneSpec = structuredClone(sceneSpec);
+  currentSeed = seed;
+  currentMaterialSeed = materialSeed;
+  seedInput.value = String(seed);
+  holdCountInput.value = String(holds.length);
+  wallFront = wallSpec.depth / 2;
+  updateStereoCamera();
+  holdJson.value = serializeSceneData(holds);
   generation += 1;
-  status.textContent = `Scene ${generation} · seed ${seed} · ${holdCount} holds · 3 volumes`;
+  status.textContent = `Scene ${generation} · seed ${seed} · ${holds.length} holds · ${volumeSpecs.length} volumes`;
   delete status.dataset.error;
 }
 
@@ -606,6 +782,33 @@ function render() {
   renderStereoView();
   requestAnimationFrame(render);
 }
+
+canvas.addEventListener("pointerdown", (event) => {
+  pointerDownPosition = event.button === 0
+    ? { x: event.clientX, y: event.clientY }
+    : null;
+});
+
+canvas.addEventListener("pointerup", (event) => {
+  if (!pointerDownPosition) return;
+  const moved = Math.hypot(
+    event.clientX - pointerDownPosition.x,
+    event.clientY - pointerDownPosition.y,
+  );
+  pointerDownPosition = null;
+  if (moved > 4) return;
+
+  setSelectedHold(findHoldAtPointer(event));
+});
+
+canvas.addEventListener("pointermove", (event) => {
+  canvas.style.cursor = findHoldAtPointer(event) ? "pointer" : "";
+});
+
+canvas.addEventListener("pointerleave", () => {
+  canvas.style.cursor = "";
+  pointerDownPosition = null;
+});
 
 saveStereoButton.addEventListener("click", () => {
   try {
@@ -641,7 +844,7 @@ form.addEventListener("submit", (event) => {
 
 loadHoldsButton.addEventListener("click", () => {
   try {
-    loadHoldsFromJson();
+    loadSceneFromJson();
   } catch (error) {
     holdStatus.textContent = error instanceof Error
       ? error.message
@@ -660,8 +863,8 @@ holdJsonFileInput.addEventListener("change", async () => {
 
   try {
     holdJson.value = await file.text();
-    loadHoldsFromJson();
-    holdStatus.textContent = `Loaded holds from ${file.name}.`;
+    loadSceneFromJson();
+    holdStatus.textContent = `Loaded scene from ${file.name}.`;
     delete holdStatus.dataset.error;
   } catch (error) {
     holdStatus.textContent = error instanceof Error
@@ -678,10 +881,10 @@ saveHoldsFileButton.addEventListener("click", () => {
   const downloadUrl = URL.createObjectURL(file);
   const link = document.createElement("a");
   link.href = downloadUrl;
-  link.download = "holds.json";
+  link.download = "climbing-scene.json";
   link.click();
   window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
-  holdStatus.textContent = "JSON download started: holds.json.";
+  holdStatus.textContent = "JSON download started: climbing-scene.json.";
   delete holdStatus.dataset.error;
 });
 
