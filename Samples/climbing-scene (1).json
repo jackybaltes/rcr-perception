@@ -1,0 +1,388 @@
+{
+  "formatVersion": 1,
+  "seed": 42,
+  "materialSeed": 2654435731,
+  "scene": {
+    "wall": {
+      "width": 5,
+      "height": 2.5,
+      "depth": 0.025,
+      "originMarker": {
+        "width": 1,
+        "height": 1,
+        "x": 0.5,
+        "y": 0.5
+      }
+    },
+    "volumes": [
+      {
+        "name": "Volume_0",
+        "center": {
+          "x": -1.35,
+          "y": 0.72
+        },
+        "baseWidth": 0.75,
+        "baseHeight": 0.65,
+        "depth": 0.24
+      },
+      {
+        "name": "Volume_1",
+        "center": {
+          "x": 0.05,
+          "y": 1.72
+        },
+        "baseWidth": 0.75,
+        "baseHeight": 0.65,
+        "depth": 0.24
+      },
+      {
+        "name": "Volume_2",
+        "center": {
+          "x": 1.35,
+          "y": 0.78
+        },
+        "baseWidth": 0.75,
+        "baseHeight": 0.65,
+        "depth": 0.24
+      }
+    ]
+  },
+  "holds": {
+    "hold_1": {
+      "type": "microban_hold",
+      "color": "#59C77B",
+      "position": {
+        "x": 1.481619,
+        "y": 0.751107,
+        "z": 0.092864
+      },
+      "orientation": {
+        "roll": -0.636076,
+        "pitch": 0.800017,
+        "yaw": 1.062006
+      }
+    },
+    "hold_2": {
+      "type": "microban_hold",
+      "color": "#6389ED",
+      "position": {
+        "x": -0.8356,
+        "y": 1.582299,
+        "z": 0
+      },
+      "orientation": {
+        "roll": 0,
+        "pitch": 0,
+        "yaw": 0
+      }
+    },
+    "hold_3": {
+      "type": "microban_hold",
+      "color": "#59C77B",
+      "position": {
+        "x": -1.347141,
+        "y": 0.493095,
+        "z": 0.072439
+      },
+      "orientation": {
+        "roll": 0.636076,
+        "pitch": 0,
+        "yaw": 0
+      }
+    },
+    "hold_4": {
+      "type": "microban_hold",
+      "color": "#F2554E",
+      "position": {
+        "x": -0.072061,
+        "y": 1.602335,
+        "z": 0.153109
+      },
+      "orientation": {
+        "roll": 0.636076,
+        "pitch": 0,
+        "yaw": -0.785398
+      }
+    },
+    "hold_5": {
+      "type": "microban_hold",
+      "color": "#F2554E",
+      "position": {
+        "x": -1.545237,
+        "y": 1.94991,
+        "z": 0
+      },
+      "orientation": {
+        "roll": 0,
+        "pitch": 0,
+        "yaw": -0.785398
+      }
+    },
+    "hold_6": {
+      "type": "microban_hold",
+      "color": "#F2554E",
+      "position": {
+        "x": 0.515222,
+        "y": 1.769183,
+        "z": 0
+      },
+      "orientation": {
+        "roll": 0,
+        "pitch": 0,
+        "yaw": 0.785398
+      }
+    },
+    "hold_7": {
+      "type": "microban_hold",
+      "color": "#6389ED",
+      "position": {
+        "x": 0.576092,
+        "y": 0.97362,
+        "z": 0
+      },
+      "orientation": {
+        "roll": 0,
+        "pitch": 0,
+        "yaw": 0
+      }
+    },
+    "hold_8": {
+      "type": "microban_hold",
+      "color": "#6389ED",
+      "position": {
+        "x": 1.612038,
+        "y": 1.678525,
+        "z": 0
+      },
+      "orientation": {
+        "roll": 0,
+        "pitch": 0,
+        "yaw": 0
+      }
+    },
+    "hold_9": {
+      "type": "microban_hold",
+      "color": "#F2554E",
+      "position": {
+        "x": 1.194165,
+        "y": 0.255257,
+        "z": 0
+      },
+      "orientation": {
+        "roll": 0,
+        "pitch": 0,
+        "yaw": 0
+      }
+    },
+    "hold_10": {
+      "type": "microban_hold",
+      "color": "#6389ED",
+      "position": {
+        "x": -1.090913,
+        "y": 1.024732,
+        "z": 0
+      },
+      "orientation": {
+        "roll": 0,
+        "pitch": 0,
+        "yaw": 0
+      }
+    },
+    "hold_11": {
+      "type": "microban_hold",
+      "color": "#59C77B",
+      "position": {
+        "x": -0.482,
+        "y": 0.344,
+        "z": 0
+      },
+      "orientation": {
+        "roll": 0,
+        "pitch": 0,
+        "yaw": 0.328659
+      }
+    },
+    "hold_12": {
+      "type": "microban_hold",
+      "color": "#6389ED",
+      "position": {
+        "x": -0.248,
+        "y": 0.338,
+        "z": 0
+      },
+      "orientation": {
+        "roll": 0,
+        "pitch": 0,
+        "yaw": 0
+      }
+    },
+    "hold_13": {
+      "type": "microban_hold",
+      "color": "#F2554E",
+      "position": {
+        "x": -0.133,
+        "y": 0.267,
+        "z": 0
+      },
+      "orientation": {
+        "roll": 0,
+        "pitch": 0,
+        "yaw": 0
+      }
+    },
+    "hold_14": {
+      "type": "microban_hold",
+      "color": "#59C77B",
+      "position": {
+        "x": -0.267,
+        "y": 0.194,
+        "z": 0
+      },
+      "orientation": {
+        "roll": 0,
+        "pitch": 0,
+        "yaw": 0
+      }
+    },
+    "hold_15": {
+      "type": "microban_hold",
+      "color": "#6389ED",
+      "position": {
+        "x": -0.128,
+        "y": 0.13,
+        "z": 0
+      },
+      "orientation": {
+        "roll": 0,
+        "pitch": 0,
+        "yaw": 0
+      }
+    },
+    "hold_16": {
+      "type": "microban_hold",
+      "color": "#F2554E",
+      "position": {
+        "x": -0.323,
+        "y": 0.075,
+        "z": 0
+      },
+      "orientation": {
+        "roll": 0,
+        "pitch": 0,
+        "yaw": 0
+      }
+    },
+    "hold_17": {
+      "type": "microban_hold",
+      "color": "#59C77B",
+      "position": {
+        "x": -0.266,
+        "y": 0.476,
+        "z": 0
+      },
+      "orientation": {
+        "roll": 0,
+        "pitch": 0,
+        "yaw": 0
+      }
+    },
+    "hold_18": {
+      "type": "microban_hold",
+      "color": "#6389ED",
+      "position": {
+        "x": -0.131,
+        "y": 0.606,
+        "z": 0
+      },
+      "orientation": {
+        "roll": 0,
+        "pitch": 0,
+        "yaw": 0
+      }
+    },
+    "hold_19": {
+      "type": "microban_hold",
+      "color": "#F2554E",
+      "position": {
+        "x": -0.206,
+        "y": 0.671,
+        "z": 0
+      },
+      "orientation": {
+        "roll": 0,
+        "pitch": 0,
+        "yaw": 0.327249
+      }
+    },
+    "hold_20": {
+      "type": "microban_hold",
+      "color": "#59C77B",
+      "position": {
+        "x": -0.21,
+        "y": 0.814,
+        "z": 0
+      },
+      "orientation": {
+        "roll": 0,
+        "pitch": 0,
+        "yaw": 0
+      }
+    },
+    "hold_21": {
+      "type": "microban_hold",
+      "color": "#6389ED",
+      "position": {
+        "x": -0.354,
+        "y": 0.884,
+        "z": 0
+      },
+      "orientation": {
+        "roll": 0,
+        "pitch": 0,
+        "yaw": 0
+      }
+    },
+    "hold_22": {
+      "type": "microban_hold",
+      "color": "#F2554E",
+      "position": {
+        "x": -0.282,
+        "y": 0.945,
+        "z": 0
+      },
+      "orientation": {
+        "roll": 0,
+        "pitch": 0,
+        "yaw": -1.047198
+      }
+    },
+    "hold_23": {
+      "type": "microban_hold",
+      "color": "#59C77B",
+      "position": {
+        "x": -0.291,
+        "y": 1.006,
+        "z": 0
+      },
+      "orientation": {
+        "roll": 0,
+        "pitch": 0,
+        "yaw": 0
+      }
+    },
+    "hold_24": {
+      "type": "microban_hold",
+      "color": "#6389ED",
+      "position": {
+        "x": -0.197,
+        "y": 1.125,
+        "z": 0
+      },
+      "orientation": {
+        "roll": 0,
+        "pitch": 0,
+        "yaw": 0
+      }
+    }
+  }
+}
