@@ -82,6 +82,8 @@ recreate a deterministic layout.
 
 ## Deploy to GitHub Pages
 
+Open the app at [jackybaltes.github.io/rcr-perception/ThreeJS](https://jackybaltes.github.io/rcr-perception/ThreeJS/).
+
 The GitHub Actions workflow deploys the browser app from `ThreeJS/` and the two
 STL hold meshes it loads from `Assets/`. It runs when relevant files are pushed
 to `main`, or can be started manually from the repository's Actions tab. In the
