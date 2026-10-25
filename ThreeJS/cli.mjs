@@ -23,7 +23,7 @@ Options:
   --seed <integer>       Seed from 0 to 4294967295; 0 chooses a new seed per request (default: 0)
   --volumes <integer>    Number of volumes from 0 to 50 (default: 3)
   --holds <integer>      Number of holds from 0 to 50 (default: 10)
-  --camera-height <m>    Stereo camera height; must be non-negative (default: 1.25)
+  --camera-height <m>    Stereo camera height; must be non-negative (default: 0.8)
   --camera-distance <m>  Stereo camera distance from the wall; must be positive (default: 0.75)
   --requests <integer>   Number of walls to generate (default: 1)
   --prefix <path>        Output filename prefix (default: wall_)
@@ -57,7 +57,7 @@ function parseArguments(args) {
     seed: 0,
     volumes: 3,
     holds: 10,
-    cameraHeight: 1.25,
+    cameraHeight: 0.8,
     cameraDistance: 0.75,
     requests: 1,
     prefix: "wall_",
