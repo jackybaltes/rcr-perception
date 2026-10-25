@@ -270,6 +270,30 @@ function seededRandom(seed) {
   };
 }
 
+function createRandomSceneSpec(seed, volumeCount) {
+  const random = seededRandom(seed ^ 0xa511e9b3);
+  const wall = structuredClone(DEFAULT_SCENE.wall);
+  const volumes = [];
+
+  for (let index = 0; index < volumeCount; index += 1) {
+    const baseWidth = 0.35 + random() * 0.4;
+    const baseHeight = 0.3 + random() * 0.4;
+    volumes.push({
+      name: `Volume_${index}`,
+      center: {
+        x: -wall.width / 2 + baseWidth / 2
+          + random() * (wall.width - baseWidth),
+        y: baseHeight / 2 + random() * (wall.height - baseHeight),
+      },
+      baseWidth,
+      baseHeight,
+      depth: 0.16 + random() * 0.2,
+    });
+  }
+
+  return { wall, volumes };
+}
+
 function rockTexture(seed, hue = 0.12, saturation = 0.11, value = 0.38) {
   const random = seededRandom(seed);
   const size = 128;
@@ -1363,6 +1387,88 @@ function rebuildScene(
   delete status.dataset.error;
   if (wallGridVisible) rebuildWallGrid();
 }
+
+function captureStereoPng() {
+  return new Promise((resolve, reject) => {
+    stereoCanvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error("Could not create a PNG from the stereo view."));
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.addEventListener("load", () => resolve(reader.result), { once: true });
+      reader.addEventListener("error", () => reject(reader.error), { once: true });
+      reader.readAsDataURL(blob);
+    }, "image/png");
+  });
+}
+
+async function generateRandomWall({
+  seed = 0,
+  volumeCount = 3,
+  holdCount = 10,
+  cameraHeight = 1.25,
+  cameraDistance = 0.75,
+} = {}) {
+  const requireCount = (value, label) => {
+    if (!Number.isInteger(value) || value < 0 || value > 50) {
+      throw new RangeError(`${label} must be a whole number from 0 to 50.`);
+    }
+  };
+  if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) {
+    throw new RangeError("seed must be an unsigned 32-bit integer (0 selects a random seed).");
+  }
+  requireCount(volumeCount, "volumeCount");
+  requireCount(holdCount, "holdCount");
+  if (!Number.isFinite(cameraHeight) || cameraHeight < 0) {
+    throw new RangeError("cameraHeight must be a non-negative number.");
+  }
+  if (!Number.isFinite(cameraDistance) || cameraDistance <= 0) {
+    throw new RangeError("cameraDistance must be greater than zero.");
+  }
+
+  let resolvedSeed = seed;
+  if (resolvedSeed === 0) {
+    resolvedSeed = crypto.getRandomValues(new Uint32Array(1))[0];
+    if (resolvedSeed === 0) resolvedSeed = 1;
+  }
+
+  stereoHeightInput.value = String(cameraHeight);
+  stereoDistanceInput.value = String(cameraDistance);
+  updateStereoCamera();
+
+  const sceneSpec = createRandomSceneSpec(resolvedSeed, volumeCount);
+  const materialSeed = (resolvedSeed ^ 0x9e3779b9) >>> 0;
+  holdCountInput.value = String(holdCount);
+  rebuildScene(
+    sceneSpec,
+    null,
+    undefined,
+    resolvedSeed,
+    materialSeed,
+  );
+
+  await new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  });
+  renderStereoView();
+
+  const holds = [];
+  root.traverse((object) => {
+    if (isHold(object)) holds.push(object);
+  });
+  return {
+    seed: resolvedSeed,
+    sceneJson: serializeSceneData(holds),
+    stereoPngDataUrl: await captureStereoPng(),
+  };
+}
+
+window.RCRWallAPI = {
+  generateRandomWall,
+  isReady: () => Boolean(holdGeometries.Microban && holdGeometries.CubeHold),
+};
 
 function resize() {
   const width = canvas.clientWidth;

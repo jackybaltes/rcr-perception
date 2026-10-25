@@ -1,0 +1,14 @@
+{
+  "name": "rcr-perception-threejs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "node cli.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "playwright": "^1.56.1"
+  }
+}
