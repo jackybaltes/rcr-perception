@@ -1410,6 +1410,7 @@ async function generateRandomWall({
   holdCount = 10,
   cameraHeight = 1.25,
   cameraDistance = 0.75,
+  cameraViews = null,
 } = {}) {
   const requireCount = (value, label) => {
     if (!Number.isInteger(value) || value < 0 || value > 50) {
@@ -1421,22 +1422,28 @@ async function generateRandomWall({
   }
   requireCount(volumeCount, "volumeCount");
   requireCount(holdCount, "holdCount");
-  if (!Number.isFinite(cameraHeight) || cameraHeight < 0) {
-    throw new RangeError("cameraHeight must be a non-negative number.");
+  const views = cameraViews ?? [{ height: cameraHeight, distance: cameraDistance }];
+  if (!Array.isArray(views) || views.length === 0) {
+    throw new RangeError("cameraViews must contain at least one camera view.");
   }
-  if (!Number.isFinite(cameraDistance) || cameraDistance <= 0) {
-    throw new RangeError("cameraDistance must be greater than zero.");
-  }
+  views.forEach((view, index) => {
+    if (!view || typeof view !== "object") {
+      throw new RangeError(`cameraViews[${index}] must include a height and distance.`);
+    }
+    const { height, distance } = view;
+    if (!Number.isFinite(height) || height < 0) {
+      throw new RangeError(`cameraViews[${index}].height must be a non-negative number.`);
+    }
+    if (!Number.isFinite(distance) || distance <= 0) {
+      throw new RangeError(`cameraViews[${index}].distance must be greater than zero.`);
+    }
+  });
 
   let resolvedSeed = seed;
   if (resolvedSeed === 0) {
     resolvedSeed = crypto.getRandomValues(new Uint32Array(1))[0];
     if (resolvedSeed === 0) resolvedSeed = 1;
   }
-
-  stereoHeightInput.value = String(cameraHeight);
-  stereoDistanceInput.value = String(cameraDistance);
-  updateStereoCamera();
 
   const sceneSpec = createRandomSceneSpec(resolvedSeed, volumeCount);
   const materialSeed = (resolvedSeed ^ 0x9e3779b9) >>> 0;
@@ -1452,16 +1459,26 @@ async function generateRandomWall({
   await new Promise((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(resolve));
   });
-  renderStereoView();
 
   const holds = [];
   root.traverse((object) => {
     if (isHold(object)) holds.push(object);
   });
+  const stereoPngDataUrls = [];
+  for (const { height, distance } of views) {
+    stereoHeightInput.value = String(height);
+    stereoDistanceInput.value = String(distance);
+    updateStereoCamera();
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    renderStereoView();
+    stereoPngDataUrls.push(await captureStereoPng());
+  }
+
   return {
     seed: resolvedSeed,
     sceneJson: serializeSceneData(holds),
-    stereoPngDataUrl: await captureStereoPng(),
+    stereoPngDataUrl: stereoPngDataUrls[0],
+    stereoPngDataUrls,
   };
 }
 

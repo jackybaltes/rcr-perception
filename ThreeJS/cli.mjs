@@ -23,14 +23,15 @@ Options:
   --seed <integer>       Seed from 0 to 4294967295; 0 chooses a new seed per request (default: 0)
   --volumes <integer>    Number of volumes from 0 to 50 (default: 3)
   --holds <integer>      Number of holds from 0 to 50 (default: 10)
-  --camera-height <m>    Stereo camera height; must be non-negative (default: 0.8)
+  --camera-height <m>    Stereo camera height; must be non-negative (default: 0.7)
   --camera-distance <m>  Stereo camera distance from the wall; must be positive (default: 0.75)
+  --camera-view <h>,<d>  Add a camera view (height, distance in meters); repeat for multiple views
   --requests <integer>   Number of walls to generate (default: 1)
   --prefix <path>        Output filename prefix (default: wall_)
   --help                 Show this help
 
 Nonzero seeds advance by one for each request. Files are written as
-<prefix><number>.png and <prefix><number>.json.
+<prefix>cam<camera-index>_<number>.png and <prefix><number>.json.
 `;
 }
 
@@ -52,22 +53,38 @@ function parseFiniteNumber(value, name) {
   return number;
 }
 
+function parseCameraView(value) {
+  const parts = value.split(",");
+  if (parts.length !== 2) {
+    throw new Error("--camera-view must be specified as <height>,<distance>.");
+  }
+  const [height, distance] = parts.map((part, index) => (
+    parseFiniteNumber(part, `--camera-view ${index === 0 ? "height" : "distance"}`)
+  ));
+  if (height < 0) throw new Error("Camera view height must be non-negative.");
+  if (distance <= 0) throw new Error("Camera view distance must be greater than zero.");
+  return { height, distance };
+}
+
 function parseArguments(args) {
   const options = {
     seed: 0,
     volumes: 3,
     holds: 10,
-    cameraHeight: 0.8,
+    cameraHeight: 0.7,
     cameraDistance: 0.75,
+    cameraViews: [],
     requests: 1,
     prefix: "wall_",
   };
+  let hasLegacyCameraOption = false;
   const names = new Map([
     ["--seed", "seed"],
     ["--volumes", "volumes"],
     ["--holds", "holds"],
     ["--camera-height", "cameraHeight"],
     ["--camera-distance", "cameraDistance"],
+    ["--camera-view", "cameraView"],
     ["--requests", "requests"],
     ["--prefix", "prefix"],
   ]);
@@ -83,9 +100,12 @@ function parseArguments(args) {
       throw new Error(`Missing value for ${flag}.`);
     }
     index += 1;
-    if (name === "prefix") {
+    if (name === "cameraView") {
+      options.cameraViews.push(parseCameraView(value));
+    } else if (name === "prefix") {
       options[name] = value;
     } else if (name === "cameraHeight" || name === "cameraDistance") {
+      hasLegacyCameraOption = true;
       options[name] = parseFiniteNumber(value, flag);
     } else {
       options[name] = parseInteger(value, flag);
@@ -100,6 +120,15 @@ function parseArguments(args) {
   }
   if (options.cameraHeight < 0) throw new Error("--camera-height must be non-negative.");
   if (options.cameraDistance <= 0) throw new Error("--camera-distance must be greater than zero.");
+  if (options.cameraViews.length && hasLegacyCameraOption) {
+    throw new Error("Use --camera-view or --camera-height/--camera-distance, not both.");
+  }
+  if (!options.cameraViews.length) {
+    options.cameraViews.push({
+      height: options.cameraHeight,
+      distance: options.cameraDistance,
+    });
+  }
   if (options.requests < 1) throw new Error("--requests must be at least 1.");
   if (!options.prefix.trim()) throw new Error("--prefix must not be empty.");
   return options;
@@ -231,36 +260,45 @@ async function run() {
     const digits = Math.max(4, String(options.requests).length);
     for (let index = 0; index < options.requests; index += 1) {
       const result = await page.evaluate(
-        ({ seed, volumeCount, holdCount, cameraHeight, cameraDistance }) => (
+        ({ seed, volumeCount, holdCount, cameraViews }) => (
           window.RCRWallAPI.generateRandomWall({
             seed,
             volumeCount,
             holdCount,
-            cameraHeight,
-            cameraDistance,
+            cameraViews,
           })
         ),
         {
           seed: seedForRequest(options.seed, index),
           volumeCount: options.volumes,
           holdCount: options.holds,
-          cameraHeight: options.cameraHeight,
-          cameraDistance: options.cameraDistance,
+          cameraViews: options.cameraViews,
         },
       );
       const sequence = String(index + 1).padStart(digits, "0");
-      const imagePath = `${outputPrefix}${sequence}.png`;
       const jsonPath = `${outputPrefix}${sequence}.json`;
-      const dataUrlMatch = /^data:image\/png;base64,([A-Za-z0-9+/]+=*)$/.exec(
-        result.stereoPngDataUrl,
-      );
-      if (!dataUrlMatch) throw new Error("The Three.js API returned an invalid PNG.");
+      if (result.stereoPngDataUrls.length !== options.cameraViews.length) {
+        throw new Error("The Three.js API returned an unexpected number of camera views.");
+      }
+
+      const imagePaths = result.stereoPngDataUrls.map((dataUrl, cameraIndex) => {
+        const dataUrlMatch = /^data:image\/png;base64,([A-Za-z0-9+/]+=*)$/.exec(dataUrl);
+        if (!dataUrlMatch) {
+          throw new Error(`The Three.js API returned an invalid PNG for camera ${cameraIndex + 1}.`);
+        }
+        return {
+          path: `${outputPrefix}cam${cameraIndex + 1}_${sequence}.png`,
+          contents: Buffer.from(dataUrlMatch[1], "base64"),
+        };
+      });
 
       await Promise.all([
-        writeFile(imagePath, Buffer.from(dataUrlMatch[1], "base64")),
+        ...imagePaths.map(({ path: imagePath, contents }) => writeFile(imagePath, contents)),
         writeFile(jsonPath, result.sceneJson, "utf8"),
       ]);
-      console.log(`Generated seed ${result.seed}: ${imagePath} and ${jsonPath}`);
+      console.log(
+        `Generated seed ${result.seed}: ${imagePaths.map(({ path: image }) => image).join(", ")} and ${jsonPath}`,
+      );
     }
   } finally {
     if (browser) await browser.close();

@@ -80,15 +80,24 @@ Open <http://localhost:8000/ThreeJS/>. Internet access is required for the
 Three.js modules loaded from jsDelivr. Use the seed and hold count controls to
 recreate a deterministic layout.
 
+## Deploy to GitHub Pages
+
+The GitHub Actions workflow deploys the browser app from `ThreeJS/` and the two
+STL hold meshes it loads from `Assets/`. It runs when relevant files are pushed
+to `main`, or can be started manually from the repository's Actions tab. In the
+repository settings, set **Pages → Build and deployment → Source** to **GitHub
+Actions**. After deployment, open the `ThreeJS/` path under the repository's
+GitHub Pages URL.
+
 ## Generate walls from the command line
 
 The browser exposes `window.RCRWallAPI.generateRandomWall({ seed,
-volumeCount, holdCount, cameraHeight, cameraDistance })`. It returns a promise
-containing the resolved seed, the scene JSON string, and a data URL for the
-side-by-side stereo PNG. A seed of `0` selects a fresh random seed; a nonzero
-seed reproduces the same scene. Volume and hold counts must each be between 0
-and 50. Camera height must be non-negative and camera distance must be positive;
-both are measured in meters.
+volumeCount, holdCount, cameraViews })`. It returns a promise containing the
+resolved seed, the scene JSON string, and data URLs for each side-by-side
+stereo PNG. Every camera view has a `height` and `distance` in meters. A seed
+of `0` selects a fresh random seed; a nonzero seed reproduces the same scene.
+Volume and hold counts must each be between 0 and 50. Camera height must be
+non-negative and camera distance must be positive.
 
 The CLI launches headless Chromium and calls that API directly. It starts a
 temporary local static-file server for the page and bundled assets; no
@@ -103,12 +112,14 @@ npx playwright install chromium
 Generate a batch of walls from the repository root:
 
 ```powershell
-node ThreeJS/cli.mjs --seed 42 --volumes 3 --holds 10 --camera-height 1.25 --camera-distance 0.75 --requests 5 --prefix Outputs/wall_
+node ThreeJS/cli.mjs --seed 42 --volumes 3 --holds 10 --camera-view 0.7,0.75 --camera-view 1.2,1.0 --requests 5 --prefix Outputs/wall_
 ```
 
-This writes `Outputs/wall_0001.png`, `Outputs/wall_0001.json`, and so on. For
-nonzero seeds, each request uses the next seed (42, 43, ...); `--seed 0`
-chooses a new random seed for every request. The JSON records the actual seed
-used, so a generated wall can be reproduced later. Use
-`node ThreeJS/cli.mjs --help` to see all options. The Three.js modules are
-loaded from jsDelivr, so internet access is required.
+Repeat `--camera-view <height>,<distance>` to request multiple views of each
+wall. This writes `Outputs/wall_cam1_0001.png`,
+`Outputs/wall_cam2_0001.png`, and one shared
+`Outputs/wall_0001.json` for that wall. For nonzero seeds, each request uses
+the next seed (42, 43, ...); `--seed 0` chooses a new random seed for every
+wall. The JSON records the actual seed used, so a generated wall can be
+reproduced later. Use `node ThreeJS/cli.mjs --help` to see all options. The
+Three.js modules are loaded from jsDelivr, so internet access is required.
