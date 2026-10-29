@@ -26,7 +26,7 @@ Options:
   --wall-width <m>       Wall width in meters (default: 0.8)
   --wall-height <m>      Wall height in meters (default: 1.4)
   --camera-height <m>    Stereo camera height; must be non-negative (default: 0.7)
-  --camera-distance <m>  Stereo camera distance from the wall; must be positive (default: 0.75)
+  --camera-distance <m>  Stereo camera distance from the wall; must be positive (default: 1)
   --camera-view <h>,<d>  Add a camera view (height, distance in meters); repeat for multiple views
   --requests <integer>   Number of walls to generate (default: 1)
   --prefix <path>        Output filename prefix (default: wall_)
@@ -76,7 +76,7 @@ function parseArguments(args) {
     wallWidth: 0.8,
     wallHeight: 1.4,
     cameraHeight: 0.7,
-    cameraDistance: 0.75,
+    cameraDistance: 1,
     cameraViews: [],
     requests: 1,
     prefix: "wall_",

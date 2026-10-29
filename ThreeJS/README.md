@@ -63,8 +63,9 @@ integer colors remain accepted when loading.
 Use **Load scene from disk** to restore a saved scene, or **Save scene to disk**
 to download the current JSON as `climbing-scene.json`.
 Above the JSON field, a side-by-side front stereo preview shows the wall from
-two camera positions with a 64 mm eye separation and a default center distance
-of 0.75 m from the wall plane. The camera height and wall distance can be
+two camera positions with a 64 mm eye separation. By default, the center camera
+is at the wall's midpoint height (0.7 m) and 1 m from the wall plane, framing
+the full default wall. The camera height and wall distance can be
 adjusted live using the numeric controls above the preview; the distance is
 measured from the wall's z = 0 front face.
 Use **Save stereo view as PNG** to download the current side-by-side preview as
