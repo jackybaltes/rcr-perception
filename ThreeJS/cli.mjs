@@ -21,8 +21,10 @@ function usage() {
 
 Options:
   --seed <integer>       Seed from 0 to 4294967295; 0 chooses a new seed per request (default: 0)
-  --volumes <integer>    Number of volumes from 0 to 50 (default: 3)
+  --volumes <integer>    Number of volumes from 0 to 10 (default: 3)
   --holds <integer>      Number of holds from 0 to 50 (default: 10)
+  --wall-width <m>       Wall width in meters (default: 0.8)
+  --wall-height <m>      Wall height in meters (default: 1.4)
   --camera-height <m>    Stereo camera height; must be non-negative (default: 0.7)
   --camera-distance <m>  Stereo camera distance from the wall; must be positive (default: 0.75)
   --camera-view <h>,<d>  Add a camera view (height, distance in meters); repeat for multiple views
@@ -71,6 +73,8 @@ function parseArguments(args) {
     seed: 0,
     volumes: 3,
     holds: 10,
+    wallWidth: 0.8,
+    wallHeight: 1.4,
     cameraHeight: 0.7,
     cameraDistance: 0.75,
     cameraViews: [],
@@ -82,6 +86,8 @@ function parseArguments(args) {
     ["--seed", "seed"],
     ["--volumes", "volumes"],
     ["--holds", "holds"],
+    ["--wall-width", "wallWidth"],
+    ["--wall-height", "wallHeight"],
     ["--camera-height", "cameraHeight"],
     ["--camera-distance", "cameraDistance"],
     ["--camera-view", "cameraView"],
@@ -104,6 +110,8 @@ function parseArguments(args) {
       options.cameraViews.push(parseCameraView(value));
     } else if (name === "prefix") {
       options[name] = value;
+    } else if (name === "wallWidth" || name === "wallHeight") {
+      options[name] = parseFiniteNumber(value, flag);
     } else if (name === "cameraHeight" || name === "cameraDistance") {
       hasLegacyCameraOption = true;
       options[name] = parseFiniteNumber(value, flag);
@@ -115,9 +123,10 @@ function parseArguments(args) {
   if (options.seed > 0xffffffff) {
     throw new Error("--seed must be between 0 and 4294967295.");
   }
-  for (const name of ["volumes", "holds"]) {
-    if (options[name] > 50) throw new Error(`--${name} must be between 0 and 50.`);
-  }
+  if (options.volumes > 10) throw new Error("--volumes must be between 0 and 10.");
+  if (options.holds > 50) throw new Error("--holds must be between 0 and 50.");
+  if (options.wallWidth <= 0) throw new Error("--wall-width must be greater than zero.");
+  if (options.wallHeight <= 0) throw new Error("--wall-height must be greater than zero.");
   if (options.cameraHeight < 0) throw new Error("--camera-height must be non-negative.");
   if (options.cameraDistance <= 0) throw new Error("--camera-distance must be greater than zero.");
   if (options.cameraViews.length && hasLegacyCameraOption) {
@@ -260,12 +269,14 @@ async function run() {
     const digits = Math.max(4, String(options.requests).length);
     for (let index = 0; index < options.requests; index += 1) {
       const result = await page.evaluate(
-        ({ seed, volumeCount, holdCount, cameraViews }) => (
+        ({ seed, volumeCount, holdCount, cameraViews, wallWidth, wallHeight }) => (
           window.RCRWallAPI.generateRandomWall({
             seed,
             volumeCount,
             holdCount,
             cameraViews,
+            wallWidth,
+            wallHeight,
           })
         ),
         {
@@ -273,6 +284,8 @@ async function run() {
           volumeCount: options.volumes,
           holdCount: options.holds,
           cameraViews: options.cameraViews,
+          wallWidth: options.wallWidth,
+          wallHeight: options.wallHeight,
         },
       );
       const sequence = String(index + 1).padStart(digits, "0");

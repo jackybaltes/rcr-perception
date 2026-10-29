@@ -50,6 +50,7 @@ body {
 
 .controls {
   display: flex;
+  flex-wrap: wrap;
   align-items: end;
   gap: 12px;
 }
@@ -565,7 +566,11 @@ body {
   }
 
   .controls label {
-    flex: 1;
+    flex: 1 1 80px;
+  }
+
+  .controls .seed-update {
+    flex: 0 0 auto;
   }
 
   .controls input[type="number"] {

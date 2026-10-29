@@ -2,21 +2,33 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
 
-const WALL_WIDTH = 5;
-const WALL_HEIGHT = 2.5;
+const WALL_WIDTH = 0.8;
+const WALL_HEIGHT = 1.4;
 const WALL_DEPTH = 0.025;
 const WALL_FRONT_Z = 0;
+function originMarkerDimensions(wallWidth, wallHeight) {
+  const markerSize = wallWidth < 2 ? 0.1 : 1;
+  const width = Math.min(markerSize, wallWidth);
+  const height = Math.min(markerSize, wallHeight);
+  return {
+    width,
+    height,
+    x: width / 2,
+    y: height / 2,
+  };
+}
+
 const DEFAULT_SCENE = {
   wall: {
     width: WALL_WIDTH,
     height: WALL_HEIGHT,
     depth: WALL_DEPTH,
-    originMarker: { width: 1, height: 1, x: 0.5, y: 0.5 },
+    originMarker: originMarkerDimensions(WALL_WIDTH, WALL_HEIGHT),
   },
   volumes: [
-    { name: "Volume_0", center: { x: -1.35, y: 0.72 }, baseWidth: 0.75, baseHeight: 0.65, depth: 0.24 },
-    { name: "Volume_1", center: { x: 0.05, y: 1.72 }, baseWidth: 0.75, baseHeight: 0.65, depth: 0.24 },
-    { name: "Volume_2", center: { x: 1.35, y: 0.78 }, baseWidth: 0.75, baseHeight: 0.65, depth: 0.24 },
+    { name: "Volume_0", center: { x: -WALL_WIDTH * 0.28, y: WALL_HEIGHT * 0.25 }, baseWidth: WALL_WIDTH * 0.25, baseHeight: WALL_WIDTH * 0.1, depth: WALL_WIDTH * 0.125 },
+    { name: "Volume_1", center: { x: 0, y: WALL_HEIGHT * 0.7 }, baseWidth: WALL_WIDTH * 0.25, baseHeight: WALL_WIDTH * 0.1, depth: WALL_WIDTH * 0.125 },
+    { name: "Volume_2", center: { x: WALL_WIDTH * 0.28, y: WALL_HEIGHT * 0.4 }, baseWidth: WALL_WIDTH * 0.25, baseHeight: WALL_WIDTH * 0.1, depth: WALL_WIDTH * 0.125 },
   ],
 };
 const canvas = document.querySelector("#scene");
@@ -28,6 +40,9 @@ const stereoStatus = document.querySelector("#stereo-status");
 const saveStereoButton = document.querySelector("#save-stereo");
 const status = document.querySelector("#status");
 const form = document.querySelector("#scene-controls");
+const wallWidthInput = document.querySelector("#wall-width");
+const wallHeightInput = document.querySelector("#wall-height");
+const volumeCountInput = document.querySelector("#volume-count");
 const seedInput = document.querySelector("#seed");
 const updateSeedInput = document.querySelector("#update-seed");
 const holdCountInput = document.querySelector("#hold-count");
@@ -270,24 +285,36 @@ function seededRandom(seed) {
   };
 }
 
-function createRandomSceneSpec(seed, volumeCount) {
+function constrainVolumeSize(volume, wallWidth, wallHeight, scale = 1) {
+  const maximumDimension = wallWidth * 0.25;
+  volume.baseWidth = Math.min(volume.baseWidth * scale, maximumDimension);
+  volume.baseHeight = Math.min(volume.baseHeight * scale, maximumDimension, wallHeight);
+  volume.depth = Math.min(volume.depth * scale, maximumDimension);
+}
+
+function createRandomSceneSpec(seed, volumeCount, wallWidth = WALL_WIDTH, wallHeight = WALL_HEIGHT) {
   const random = seededRandom(seed ^ 0xa511e9b3);
   const wall = structuredClone(DEFAULT_SCENE.wall);
+  wall.width = wallWidth;
+  wall.height = wallHeight;
+  Object.assign(wall.originMarker, originMarkerDimensions(wallWidth, wallHeight));
   const volumes = [];
 
   for (let index = 0; index < volumeCount; index += 1) {
-    const baseWidth = 0.35 + random() * 0.4;
-    const baseHeight = 0.3 + random() * 0.4;
-    volumes.push({
+    const volume = {
       name: `Volume_${index}`,
+      baseWidth: wall.width * (0.1 + random() * 0.15),
+      baseHeight: wall.width * 0.1,
+      depth: wall.width * (0.05 + random() * 0.2),
+    };
+    constrainVolumeSize(volume, wall.width, wall.height);
+    volumes.push({
+      ...volume,
       center: {
-        x: -wall.width / 2 + baseWidth / 2
-          + random() * (wall.width - baseWidth),
-        y: baseHeight / 2 + random() * (wall.height - baseHeight),
+        x: -wall.width / 2 + volume.baseWidth / 2
+          + random() * (wall.width - volume.baseWidth),
+        y: volume.baseHeight / 2 + random() * (wall.height - volume.baseHeight),
       },
-      baseWidth,
-      baseHeight,
-      depth: 0.16 + random() * 0.2,
     });
   }
 
@@ -552,8 +579,9 @@ function addHolds(group, surfaces, count, seed) {
 
       const center = hold.position;
       const radius = 0.04;
+      const minimumClearance = 0.02;
       const clear = placed.every(
-        (other) => center.distanceTo(other.center) >= radius + other.radius + 0.12,
+        (other) => center.distanceTo(other.center) >= radius + other.radius + minimumClearance,
       );
       if (clear) {
         hold.name = `MicrobanHold_${i}`;
@@ -834,9 +862,8 @@ function addVolume() {
   }
 
   const sceneSpec = structuredClone(currentSceneSpec);
-  const baseWidth = 0.75;
-  const baseHeight = 0.65;
-  const depth = 0.24;
+  const baseWidth = currentSceneSpec.wall.width * 0.25;
+  const baseHeight = Math.min(currentSceneSpec.wall.width * 0.1, currentSceneSpec.wall.height);
   let index = 0;
   while (sceneSpec.volumes.some((volume) => volume.name === `Volume_${index}`)) index += 1;
   const addedVolumeCount = Math.max(0, sceneSpec.volumes.length - DEFAULT_SCENE.volumes.length);
@@ -848,7 +875,7 @@ function addVolume() {
     },
     baseWidth,
     baseHeight,
-    depth,
+    depth: currentSceneSpec.wall.width * 0.125,
   });
   rebuildScene(
     sceneSpec,
@@ -1309,6 +1336,10 @@ function rebuildScene(
     status.dataset.error = "true";
     return;
   }
+  Object.assign(
+    sceneSpec.wall.originMarker,
+    originMarkerDimensions(sceneSpec.wall.width, sceneSpec.wall.height),
+  );
 
   if (holdRotation) finishHoldRotation(false);
   if (holdMove) finishHoldMove(false);
@@ -1375,6 +1406,8 @@ function rebuildScene(
   root.clear();
   root.add(nextRoot);
   currentSceneSpec = structuredClone(sceneSpec);
+  wallWidthInput.value = String(sceneSpec.wall.width);
+  wallHeightInput.value = String(sceneSpec.wall.height);
   currentSeed = seed;
   currentMaterialSeed = materialSeed;
   seedInput.value = String(seed);
@@ -1411,10 +1444,13 @@ async function generateRandomWall({
   cameraHeight = 1.25,
   cameraDistance = 0.75,
   cameraViews = null,
+  wallWidth = WALL_WIDTH,
+  wallHeight = WALL_HEIGHT,
 } = {}) {
   const requireCount = (value, label) => {
-    if (!Number.isInteger(value) || value < 0 || value > 50) {
-      throw new RangeError(`${label} must be a whole number from 0 to 50.`);
+    const maximum = label === "volumeCount" ? 10 : 50;
+    if (!Number.isInteger(value) || value < 0 || value > maximum) {
+      throw new RangeError(`${label} must be a whole number from 0 to ${maximum}.`);
     }
   };
   if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) {
@@ -1422,6 +1458,12 @@ async function generateRandomWall({
   }
   requireCount(volumeCount, "volumeCount");
   requireCount(holdCount, "holdCount");
+  if (!Number.isFinite(wallWidth) || wallWidth <= 0) {
+    throw new RangeError("wallWidth must be a positive number.");
+  }
+  if (!Number.isFinite(wallHeight) || wallHeight <= 0) {
+    throw new RangeError("wallHeight must be a positive number.");
+  }
   const views = cameraViews ?? [{ height: cameraHeight, distance: cameraDistance }];
   if (!Array.isArray(views) || views.length === 0) {
     throw new RangeError("cameraViews must contain at least one camera view.");
@@ -1445,8 +1487,9 @@ async function generateRandomWall({
     if (resolvedSeed === 0) resolvedSeed = 1;
   }
 
-  const sceneSpec = createRandomSceneSpec(resolvedSeed, volumeCount);
+  const sceneSpec = createRandomSceneSpec(resolvedSeed, volumeCount, wallWidth, wallHeight);
   const materialSeed = (resolvedSeed ^ 0x9e3779b9) >>> 0;
+  volumeCountInput.value = String(volumeCount);
   holdCountInput.value = String(holdCount);
   rebuildScene(
     sceneSpec,
@@ -1605,10 +1648,30 @@ saveStereoButton.addEventListener("click", () => {
 form.addEventListener("submit", (event) => {
   event.preventDefault();
   try {
+    const wallWidth = wallWidthInput.valueAsNumber;
+    const wallHeight = wallHeightInput.valueAsNumber;
+    const volumeCount = volumeCountInput.valueAsNumber;
+    if (!Number.isFinite(wallWidth) || wallWidth <= 0) {
+      throw new Error("Wall width must be a positive number.");
+    }
+    if (!Number.isFinite(wallHeight) || wallHeight <= 0) {
+      throw new Error("Wall height must be a positive number.");
+    }
+    if (!Number.isInteger(volumeCount) || volumeCount < 0 || volumeCount > 10) {
+      throw new Error("Volume count must be a whole number from 0 to 10.");
+    }
     const seed = updateSeedInput.checked
       ? crypto.getRandomValues(new Uint32Array(1))[0]
       : Number(seedInput.value);
-    rebuildScene(undefined, null, undefined, seed);
+    const sceneSpec = structuredClone(currentSceneSpec);
+    sceneSpec.wall.width = wallWidth;
+    sceneSpec.wall.height = wallHeight;
+    Object.assign(
+      sceneSpec.wall.originMarker,
+      originMarkerDimensions(wallWidth, wallHeight),
+    );
+    sceneSpec.volumes = createRandomSceneSpec(seed, volumeCount, wallWidth, wallHeight).volumes;
+    rebuildScene(sceneSpec, null, undefined, seed);
   } catch (error) {
     status.textContent = error instanceof Error ? error.message : String(error);
     status.dataset.error = "true";

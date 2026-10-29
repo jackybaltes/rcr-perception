@@ -38,7 +38,10 @@ control guide on the right side of the 3D view; click **?** again or press
 The MicrobanHold and CubeHold meshes are loaded from
 `Assets/microban_hold.stl` and `Assets/cubehold_blend.stl`. The Blender wall
 generator uses half of each configured wall dimension, so the recreated wall
-is 5 m wide by 2.5 m high.
+defaults to 0.8 m wide by 1.4 m high.
+Generated and added volumes scale with wall width, with no dimension exceeding
+25% of the wall width. The calibration square is 0.1 m by 0.1 m when the wall
+is narrower than 2 m, and 1 m by 1 m otherwise.
 Enable **Upd. Seed** beside the seed field to generate a fresh random seed on
 each **Regenerate scene** action; leave it unchecked to regenerate from the
 entered seed.
@@ -77,8 +80,8 @@ python -m http.server 8000
 ```
 
 Open <http://localhost:8000/ThreeJS/>. Internet access is required for the
-Three.js modules loaded from jsDelivr. Use the seed and hold count controls to
-recreate a deterministic layout.
+Three.js modules loaded from jsDelivr. Set the wall dimensions, volume count,
+seed, and hold count to control the generated scene.
 
 ## Deploy to GitHub Pages
 
@@ -94,12 +97,13 @@ GitHub Pages URL.
 ## Generate walls from the command line
 
 The browser exposes `window.RCRWallAPI.generateRandomWall({ seed,
-volumeCount, holdCount, cameraViews })`. It returns a promise containing the
-resolved seed, the scene JSON string, and data URLs for each side-by-side
-stereo PNG. Every camera view has a `height` and `distance` in meters. A seed
+volumeCount, holdCount, cameraViews, wallWidth, wallHeight })`. Wall width and
+height are measured in meters and default to 0.8 m and 1.4 m. It returns a promise
+containing the resolved seed, the scene JSON string, and data URLs for each
+side-by-side stereo PNG. Every camera view has a `height` and `distance` in meters. A seed
 of `0` selects a fresh random seed; a nonzero seed reproduces the same scene.
-Volume and hold counts must each be between 0 and 50. Camera height must be
-non-negative and camera distance must be positive.
+Volume count must be between 0 and 10; hold count must be between 0 and 50.
+Camera height must be non-negative and camera distance must be positive.
 
 The CLI launches headless Chromium and calls that API directly. It starts a
 temporary local static-file server for the page and bundled assets; no
@@ -114,7 +118,7 @@ npx playwright install chromium
 Generate a batch of walls from the repository root:
 
 ```powershell
-node ThreeJS/cli.mjs --seed 42 --volumes 3 --holds 10 --camera-view 0.7,0.75 --camera-view 1.2,1.0 --requests 5 --prefix Outputs/wall_
+node ThreeJS/cli.mjs --seed 42 --volumes 3 --holds 10 --wall-width 0.8 --wall-height 1.4 --camera-view 0.7,0.75 --camera-view 1.2,1.0 --requests 5 --prefix Outputs/wall_
 ```
 
 Repeat `--camera-view <height>,<distance>` to request multiple views of each
