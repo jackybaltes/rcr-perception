@@ -35,6 +35,8 @@ right-click cancels its placement and removes it. CubeHold uses
 FingerpocketHold uses `Assets/fingerpocket_hold.stl`. Randomly generated scenes
 choose between MicrobanHold, SidepullHold, and FingerpocketHold for each
 generated hold.
+Randomly generated holds are spaced using convex collision hulls built from
+each hold mesh, so the hulls do not intersect.
 Press **X** to delete the selected hold. Click **Press ? for help** to open the
 control guide on the right side of the 3D view; click **?** again or press
 **Escape** to close it.
@@ -46,8 +48,9 @@ wall generator uses half of each configured wall dimension, so the recreated
 wall defaults to 0.8 m wide by 1.4 m high.
 Generated and added volumes scale with wall width, with no base dimension
 exceeding 25% of the wall width. Their depth is kept below half the shortest
-side of the triangular base. The calibration square is 0.1 m by 0.1 m when the wall
-is narrower than 2 m, and 1 m by 1 m otherwise.
+side of the triangular base. Randomly generated volume base triangles do not
+overlap. The calibration square is 0.1 m by 0.1 m when the wall is narrower
+than 2 m, and 1 m by 1 m otherwise.
 Enable **Upd. Seed** beside the seed field to generate a fresh random seed on
 each **Regenerate scene** action; leave it unchecked to regenerate from the
 entered seed.
@@ -113,9 +116,10 @@ of `0` selects a fresh random seed; a nonzero seed reproduces the same scene.
 Volume count must be between 0 and 10; hold count must be between 0 and 50.
 Camera height must be non-negative and camera distance must be positive.
 
-The CLI launches headless Chromium and calls that API directly. It starts a
-temporary local static-file server for the page and bundled assets; no
-persistent API server is needed. Install the CLI dependency and Chromium once:
+The CLI launches headless Chromium and calls that API directly. It first tries
+the app at `http://localhost:8080/Threejs/`, then falls back to the deployed
+GitHub Pages app if the local app is unavailable. Install the CLI dependency
+and Chromium once:
 
 ```powershell
 cd ThreeJS

@@ -1,20 +1,11 @@
-import { createReadStream } from "node:fs";
-import { mkdir, stat, writeFile } from "node:fs/promises";
-import { createServer } from "node:http";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
-const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const allowedAssetRoots = new Set(["Assets", "ThreeJS"]);
-const contentTypes = new Map([
-  [".css", "text/css; charset=utf-8"],
-  [".html", "text/html; charset=utf-8"],
-  [".js", "text/javascript; charset=utf-8"],
-  [".json", "application/json; charset=utf-8"],
-  [".mjs", "text/javascript; charset=utf-8"],
-  [".stl", "model/stl"],
-]);
+const appUrls = [
+  "http://localhost:8080/Threejs/",
+  "https://jackybaltes.github.io/rcr-perception/ThreeJS/",
+];
 
 function usage() {
   return `Usage: node cli.mjs [options]
@@ -143,71 +134,6 @@ function parseArguments(args) {
   return options;
 }
 
-function createStaticServer() {
-  return createServer(async (request, response) => {
-    if (request.method !== "GET" && request.method !== "HEAD") {
-      response.writeHead(405, { Allow: "GET, HEAD" }).end();
-      return;
-    }
-
-    let requestedPath;
-    try {
-      requestedPath = decodeURIComponent(new URL(request.url, "http://localhost").pathname)
-        .replace(/^\/+/, "");
-    } catch {
-      response.writeHead(400).end("Invalid request path.");
-      return;
-    }
-    if (!requestedPath) requestedPath = "ThreeJS/index.html";
-
-    const normalizedPath = path.normalize(requestedPath);
-    const assetRoot = normalizedPath.split(path.sep)[0];
-    const filePath = path.resolve(projectRoot, normalizedPath);
-    const relativePath = path.relative(projectRoot, filePath);
-    if (
-      !allowedAssetRoots.has(assetRoot)
-      || relativePath === ".."
-      || relativePath.startsWith(`..${path.sep}`)
-      || path.isAbsolute(relativePath)
-    ) {
-      response.writeHead(404).end("Not found.");
-      return;
-    }
-
-    let resolvedPath = filePath;
-    if (path.extname(resolvedPath) === "") {
-      resolvedPath = path.join(resolvedPath, "index.html");
-    }
-    const contentType = contentTypes.get(path.extname(resolvedPath).toLowerCase());
-    if (!contentType) {
-      response.writeHead(404).end("Not found.");
-      return;
-    }
-    try {
-      if (!(await stat(resolvedPath)).isFile()) {
-        response.writeHead(404).end("Not found.");
-        return;
-      }
-    } catch {
-      response.writeHead(404).end("Not found.");
-      return;
-    }
-
-    response.writeHead(200, {
-      "Cache-Control": "no-store",
-      "Content-Type": contentType,
-    });
-    if (request.method === "HEAD") {
-      response.end();
-      return;
-    }
-
-    const stream = createReadStream(resolvedPath);
-    stream.on("error", () => response.destroy());
-    stream.pipe(response);
-  });
-}
-
 function seedForRequest(baseSeed, requestIndex) {
   if (baseSeed === 0) return 0;
   return ((baseSeed - 1 + requestIndex) % 0xffffffff) + 1;
@@ -231,14 +157,8 @@ async function run() {
   const outputPrefix = path.resolve(process.cwd(), options.prefix);
   await mkdir(path.dirname(outputPrefix), { recursive: true });
 
-  const server = createStaticServer();
   let browser;
   try {
-    await new Promise((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(0, "127.0.0.1", resolve);
-    });
-    const { port } = server.address();
     browser = await chromium.launch({
       headless: true,
       args: [
@@ -254,17 +174,31 @@ async function run() {
       viewport: { width: 1440, height: 1000 },
     });
     page.on("pageerror", (error) => console.error(`Browser error: ${error.message}`));
-    await page.goto(`http://127.0.0.1:${port}/ThreeJS/`, {
-      waitUntil: "domcontentloaded",
-      timeout: 60_000,
-    });
+    let appReady = false;
+    for (const appUrl of appUrls) {
+      try {
+        await page.goto(appUrl, {
+          waitUntil: "domcontentloaded",
+          timeout: 20_000,
+        });
+        await page.waitForFunction(
+          () => window.RCRWallAPI?.isReady(),
+          undefined,
+          { timeout: 60_000 },
+        );
+        console.log(`Using app at ${appUrl}`);
+        appReady = true;
+        break;
+      } catch (error) {
+        console.warn(`Could not use ${appUrl}: ${error.message}`);
+      }
+    }
+    if (!appReady) {
+      throw new Error("Could not load the climbing wall app from localhost or GitHub Pages.");
+    }
+
     await page.addStyleTag({ content: "#stereo-scene { height: 320px !important; }" });
     await page.evaluate(() => window.dispatchEvent(new Event("resize")));
-    await page.waitForFunction(
-      () => window.RCRWallAPI?.isReady(),
-      undefined,
-      { timeout: 120_000 },
-    );
 
     const digits = Math.max(4, String(options.requests).length);
     for (let index = 0; index < options.requests; index += 1) {
@@ -315,11 +249,6 @@ async function run() {
     }
   } finally {
     if (browser) await browser.close();
-    if (server.listening) {
-      await new Promise((resolve, reject) => {
-        server.close((error) => (error ? reject(error) : resolve()));
-      });
-    }
   }
 }
 

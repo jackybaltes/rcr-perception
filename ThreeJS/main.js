@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { ConvexGeometry } from "three/addons/geometries/ConvexGeometry.js";
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
 
 const WALL_WIDTH = 0.8;
@@ -198,6 +199,7 @@ const holdGeometries = {
   Sidepull: null,
   Fingerpocket: null,
 };
+const holdHulls = {};
 let generation = 0;
 let selectedHold = null;
 let currentSceneSpec = structuredClone(DEFAULT_SCENE);
@@ -309,6 +311,37 @@ function constrainVolumeDepth(volume) {
   volume.depth = Math.min(volume.depth, shortestBaseSide * 0.499999);
 }
 
+function volumeBaseTriangle(volume) {
+  const { center, baseWidth, baseHeight } = volume;
+  return [
+    { x: center.x - baseWidth / 2, y: center.y - baseHeight / 2 },
+    { x: center.x + baseWidth / 2, y: center.y - baseHeight / 2 },
+    { x: center.x, y: center.y + baseHeight / 2 },
+  ];
+}
+
+function volumeBasesOverlap(first, second) {
+  const firstTriangle = volumeBaseTriangle(first);
+  const secondTriangle = volumeBaseTriangle(second);
+  for (const triangle of [firstTriangle, secondTriangle]) {
+    for (let index = 0; index < triangle.length; index += 1) {
+      const start = triangle[index];
+      const end = triangle[(index + 1) % triangle.length];
+      const axis = { x: start.y - end.y, y: end.x - start.x };
+      const project = (point) => point.x * axis.x + point.y * axis.y;
+      const firstProjection = firstTriangle.map(project);
+      const secondProjection = secondTriangle.map(project);
+      if (
+        Math.max(...firstProjection) <= Math.min(...secondProjection)
+        || Math.max(...secondProjection) <= Math.min(...firstProjection)
+      ) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 function createRandomSceneSpec(seed, volumeCount, wallWidth = WALL_WIDTH, wallHeight = WALL_HEIGHT) {
   const random = seededRandom(seed ^ 0xa511e9b3);
   const wall = structuredClone(DEFAULT_SCENE.wall);
@@ -325,14 +358,25 @@ function createRandomSceneSpec(seed, volumeCount, wallWidth = WALL_WIDTH, wallHe
       depth: wall.width * (0.05 + random() * 0.2),
     };
     constrainVolumeSize(volume, wall.width, wall.height);
-    volumes.push({
-      ...volume,
-      center: {
-        x: -wall.width / 2 + volume.baseWidth / 2
-          + random() * (wall.width - volume.baseWidth),
-        y: volume.baseHeight / 2 + random() * (wall.height - volume.baseHeight),
-      },
-    });
+    let placed = false;
+    for (let attempt = 0; attempt < 1000; attempt += 1) {
+      const candidate = {
+        ...volume,
+        center: {
+          x: -wall.width / 2 + volume.baseWidth / 2
+            + random() * (wall.width - volume.baseWidth),
+          y: volume.baseHeight / 2 + random() * (wall.height - volume.baseHeight),
+        },
+      };
+      if (volumes.every((other) => !volumeBasesOverlap(candidate, other))) {
+        volumes.push(candidate);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) {
+      throw new Error(`Could not place volume ${index} without overlap after 1000 attempts.`);
+    }
   }
 
   return { wall, volumes };
@@ -527,6 +571,130 @@ function normalizeHoldGeometry(geometry) {
   return geometry;
 }
 
+function createHoldHull(geometry) {
+  const sourcePositions = geometry.getAttribute("position");
+  const sourcePoints = new Map();
+  for (let index = 0; index < sourcePositions.count; index += 1) {
+    const point = new THREE.Vector3().fromBufferAttribute(sourcePositions, index);
+    const key = `${point.x.toFixed(7)},${point.y.toFixed(7)},${point.z.toFixed(7)}`;
+    if (!sourcePoints.has(key)) sourcePoints.set(key, point);
+  }
+  const hullGeometry = new ConvexGeometry(
+    [...sourcePoints.values()],
+  );
+  const hullPositions = hullGeometry.getAttribute("position");
+  const vertices = [];
+  const vertexIndices = new Map();
+  const faces = [];
+  const faceKeys = new Set();
+  const edges = new Map();
+  const vertexIndexAt = (index) => {
+    const vertex = new THREE.Vector3().fromBufferAttribute(hullPositions, index);
+    const key = `${vertex.x.toFixed(7)},${vertex.y.toFixed(7)},${vertex.z.toFixed(7)}`;
+    if (!vertexIndices.has(key)) {
+      vertexIndices.set(key, vertices.length);
+      vertices.push(vertex);
+    }
+    return vertexIndices.get(key);
+  };
+  const edgeKey = (first, second) => (
+    first < second ? `${first}:${second}` : `${second}:${first}`
+  );
+
+  for (let index = 0; index < hullPositions.count; index += 3) {
+    const face = [
+      vertexIndexAt(index),
+      vertexIndexAt(index + 1),
+      vertexIndexAt(index + 2),
+    ];
+    const normal = new THREE.Vector3()
+      .subVectors(vertices[face[1]], vertices[face[0]])
+      .cross(new THREE.Vector3().subVectors(vertices[face[2]], vertices[face[0]]))
+      .normalize();
+    const canonicalNormal = normal.clone();
+    const firstNonzero = [canonicalNormal.x, canonicalNormal.y, canonicalNormal.z]
+      .find((component) => Math.abs(component) > 1e-7);
+    if (firstNonzero < 0) canonicalNormal.negate();
+    const normalKey = `${canonicalNormal.x.toFixed(6)},${canonicalNormal.y.toFixed(6)},${canonicalNormal.z.toFixed(6)}`;
+    if (!faceKeys.has(normalKey)) {
+      faceKeys.add(normalKey);
+      faces.push(normal);
+    }
+    for (let edgeIndex = 0; edgeIndex < 3; edgeIndex += 1) {
+      const first = face[edgeIndex];
+      const second = face[(edgeIndex + 1) % 3];
+      const key = edgeKey(first, second);
+      if (!edges.has(key)) {
+        edges.set(key, {
+          direction: new THREE.Vector3().subVectors(vertices[second], vertices[first]).normalize(),
+          faces: new Set(),
+        });
+      }
+      edges.get(key).faces.add(normalKey);
+    }
+  }
+  hullGeometry.dispose();
+  const center = vertices.reduce((sum, vertex) => sum.add(vertex), new THREE.Vector3())
+    .divideScalar(vertices.length);
+  const radius = Math.max(...vertices.map((vertex) => vertex.distanceTo(center)));
+  return {
+    vertices,
+    faces,
+    edges: [...edges.values()]
+      .filter((edge) => edge.faces.size > 1)
+      .map((edge) => edge.direction),
+    center,
+    radius,
+  };
+}
+
+function transformHoldHull(type, position, quaternion) {
+  const hull = holdHulls[type];
+  const center = hull.center.clone().applyQuaternion(quaternion).add(position);
+  return {
+    vertices: hull.vertices.map((vertex) => vertex.clone().applyQuaternion(quaternion).add(position)),
+    faces: hull.faces.map((normal) => normal.clone().applyQuaternion(quaternion)),
+    edges: hull.edges.map((edge) => edge.clone().applyQuaternion(quaternion)),
+    center,
+    radius: hull.radius,
+  };
+}
+
+function holdHullsIntersect(first, second) {
+  if (first.center.distanceToSquared(second.center) >= (first.radius + second.radius) ** 2) {
+    return false;
+  }
+  const separatesOnAxis = (axis) => {
+    let firstMin = Infinity;
+    let firstMax = -Infinity;
+    let secondMin = Infinity;
+    let secondMax = -Infinity;
+    first.vertices.forEach((vertex) => {
+      const projection = vertex.dot(axis);
+      firstMin = Math.min(firstMin, projection);
+      firstMax = Math.max(firstMax, projection);
+    });
+    second.vertices.forEach((vertex) => {
+      const projection = vertex.dot(axis);
+      secondMin = Math.min(secondMin, projection);
+      secondMax = Math.max(secondMax, projection);
+    });
+    return firstMax <= secondMin + 1e-8 || secondMax <= firstMin + 1e-8;
+  };
+  for (const axis of [...first.faces, ...second.faces]) {
+    if (separatesOnAxis(axis)) return false;
+  }
+  for (const firstEdge of first.edges) {
+    for (const secondEdge of second.edges) {
+      const axis = new THREE.Vector3().crossVectors(firstEdge, secondEdge);
+      if (axis.lengthSq() > 1e-12 && separatesOnAxis(axis.normalize())) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 function isHold(object) {
   return Object.hasOwn(holdGeometries, object.userData.holdType);
 }
@@ -600,17 +768,13 @@ function addHolds(group, surfaces, count, seed) {
       const faceRotation = faceRotations[Math.floor(random() * faceRotations.length)];
       hold.rotateZ(faceRotation);
 
-      const center = hold.position;
-      const radius = 0.04;
-      const minimumClearance = 0.02;
-      const clear = placed.every(
-        (other) => center.distanceTo(other.center) >= radius + other.radius + minimumClearance,
-      );
+      const hull = transformHoldHull(type, hold.position, hold.quaternion);
+      const clear = placed.every((other) => !holdHullsIntersect(hull, other));
       if (clear) {
         hold.name = `${type}Hold_${i}`;
         group.add(hold);
         holds.push(hold);
-        placed.push({ center: center.clone(), radius });
+        placed.push(hull);
         placedSuccessfully = true;
         break;
       }
@@ -1771,6 +1935,9 @@ try {
   holdGeometries.CubeHold = normalizeHoldGeometry(cubeHold);
   holdGeometries.Sidepull = normalizeHoldGeometry(sidepull);
   holdGeometries.Fingerpocket = normalizeHoldGeometry(fingerpocket);
+  Object.entries(holdGeometries).forEach(([type, geometry]) => {
+    holdHulls[type] = createHoldHull(geometry);
+  });
   rebuildScene();
 } catch (error) {
   status.textContent = `Could not load the hold meshes: ${error instanceof Error ? error.message : String(error)}`;
