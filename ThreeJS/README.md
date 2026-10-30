@@ -129,6 +129,11 @@ npm install
 npx playwright install chromium
 ```
 
+From the repository root, run `.\samples.ps1` to generate 50 scenes with no
+volumes and 50 scenes with three volumes. Each scene has 30 randomly selected
+holds, a 3 m by 1.4 m wall, and a camera at 0.7 m height and 1 m distance.
+The associated JSON and stereo PNG files are saved under `Outputs/samples/`.
+
 Generate a batch of walls from the repository root:
 
 ```powershell
