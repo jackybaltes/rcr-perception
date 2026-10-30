@@ -7,6 +7,9 @@ const WALL_WIDTH = 0.8;
 const WALL_HEIGHT = 1.4;
 const WALL_DEPTH = 0.025;
 const WALL_FRONT_Z = 0;
+// Quantization bounds hull complexity; this tolerance covers its maximum rounding error.
+const HOLD_HULL_GRID = 0.001;
+const HOLD_HULL_TOLERANCE = Math.sqrt(3) * HOLD_HULL_GRID / 2;
 function originMarkerDimensions(wallWidth, wallHeight) {
   const markerSize = wallWidth < 2 ? 0.1 : 1;
   const width = Math.min(markerSize, wallWidth);
@@ -205,6 +208,7 @@ let selectedHold = null;
 let currentSceneSpec = structuredClone(DEFAULT_SCENE);
 let currentSeed = 42;
 let currentMaterialSeed = 0;
+let currentVolumeHulls = [];
 let holdMove = null;
 let holdRotation = null;
 let lastPointerX = 0;
@@ -479,6 +483,10 @@ function makeTriangleSurface(a, b, c, material, name, group, surfaces, volumeCen
   mesh.name = name;
   mesh.castShadow = true;
   mesh.receiveShadow = true;
+  const volumeFaceMarker = name.lastIndexOf("_face_");
+  if (volumeFaceMarker >= 0) {
+    mesh.userData.volumeName = name.slice(0, volumeFaceMarker);
+  }
   if (normal.z > 0.25) mesh.userData.snapSurface = true;
   group.add(mesh);
 
@@ -489,6 +497,7 @@ function makeTriangleSurface(a, b, c, material, name, group, surfaces, volumeCen
       points: [a.clone(), b.clone(), c.clone()],
       normal: normal.clone(),
       area,
+      volumeName: mesh.userData.volumeName,
     });
   }
 }
@@ -576,8 +585,20 @@ function createHoldHull(geometry) {
   const sourcePoints = new Map();
   for (let index = 0; index < sourcePositions.count; index += 1) {
     const point = new THREE.Vector3().fromBufferAttribute(sourcePositions, index);
-    const key = `${point.x.toFixed(7)},${point.y.toFixed(7)},${point.z.toFixed(7)}`;
-    if (!sourcePoints.has(key)) sourcePoints.set(key, point);
+    const gridX = Math.round(point.x / HOLD_HULL_GRID);
+    const gridY = Math.round(point.y / HOLD_HULL_GRID);
+    const gridZ = Math.round(point.z / HOLD_HULL_GRID);
+    const key = `${gridX},${gridY},${gridZ}`;
+    if (!sourcePoints.has(key)) {
+      sourcePoints.set(
+        key,
+        new THREE.Vector3(
+          gridX * HOLD_HULL_GRID,
+          gridY * HOLD_HULL_GRID,
+          gridZ * HOLD_HULL_GRID,
+        ),
+      );
+    }
   }
   const hullGeometry = new ConvexGeometry(
     [...sourcePoints.values()],
@@ -645,22 +666,43 @@ function createHoldHull(geometry) {
       .map((edge) => edge.direction),
     center,
     radius,
+    tolerance: HOLD_HULL_TOLERANCE,
   };
 }
 
 function transformHoldHull(type, position, quaternion) {
   const hull = holdHulls[type];
   const center = hull.center.clone().applyQuaternion(quaternion).add(position);
+  const vertices = hull.vertices.map((vertex) => vertex.clone().applyQuaternion(quaternion).add(position));
+  const bounds = {
+    min: new THREE.Vector3(Infinity, Infinity, Infinity),
+    max: new THREE.Vector3(-Infinity, -Infinity, -Infinity),
+  };
+  vertices.forEach((vertex) => {
+    bounds.min.min(vertex);
+    bounds.max.max(vertex);
+  });
   return {
-    vertices: hull.vertices.map((vertex) => vertex.clone().applyQuaternion(quaternion).add(position)),
+    vertices,
     faces: hull.faces.map((normal) => normal.clone().applyQuaternion(quaternion)),
     edges: hull.edges.map((edge) => edge.clone().applyQuaternion(quaternion)),
     center,
-    radius: hull.radius,
+    radius: hull.radius + hull.tolerance,
+    tolerance: hull.tolerance,
+    bounds,
   };
 }
 
 function holdHullsIntersect(first, second) {
+  const tolerance = first.tolerance + second.tolerance + 1e-8;
+  for (const axis of ["x", "y", "z"]) {
+    if (
+      first.bounds.max[axis] <= second.bounds.min[axis] - tolerance
+      || second.bounds.max[axis] <= first.bounds.min[axis] - tolerance
+    ) {
+      return false;
+    }
+  }
   if (first.center.distanceToSquared(second.center) >= (first.radius + second.radius) ** 2) {
     return false;
   }
@@ -679,7 +721,7 @@ function holdHullsIntersect(first, second) {
       secondMin = Math.min(secondMin, projection);
       secondMax = Math.max(secondMax, projection);
     });
-    return firstMax <= secondMin + 1e-8 || secondMax <= firstMin + 1e-8;
+    return firstMax < secondMin - tolerance || secondMax < firstMin - tolerance;
   };
   for (const axis of [...first.faces, ...second.faces]) {
     if (separatesOnAxis(axis)) return false;
@@ -693,6 +735,113 @@ function holdHullsIntersect(first, second) {
     }
   }
   return true;
+}
+
+function createVolumeHull(volume) {
+  const { center, baseWidth, baseHeight, depth } = volume;
+  const vertices = [
+    new THREE.Vector3(center.x - baseWidth / 2, center.y - baseHeight / 2, WALL_FRONT_Z),
+    new THREE.Vector3(center.x + baseWidth / 2, center.y - baseHeight / 2, WALL_FRONT_Z),
+    new THREE.Vector3(center.x, center.y + baseHeight / 2, WALL_FRONT_Z),
+    new THREE.Vector3(center.x, center.y, WALL_FRONT_Z + depth),
+  ];
+  const faceIndices = [[0, 2, 1], [0, 1, 3], [1, 2, 3], [2, 0, 3]];
+  const faces = faceIndices.map(([first, second, third]) => (
+    new THREE.Vector3().subVectors(vertices[second], vertices[first])
+      .cross(new THREE.Vector3().subVectors(vertices[third], vertices[first]))
+      .normalize()
+  ));
+  const edgeIndices = new Set();
+  const edges = [];
+  faceIndices.forEach((face) => {
+    for (let index = 0; index < face.length; index += 1) {
+      const first = face[index];
+      const second = face[(index + 1) % face.length];
+      const key = first < second ? `${first}:${second}` : `${second}:${first}`;
+      if (!edgeIndices.has(key)) {
+        edgeIndices.add(key);
+        edges.push(new THREE.Vector3().subVectors(vertices[second], vertices[first]).normalize());
+      }
+    }
+  });
+  const centerPoint = vertices.reduce((sum, vertex) => sum.add(vertex), new THREE.Vector3())
+    .divideScalar(vertices.length);
+  const bounds = {
+    min: new THREE.Vector3(Infinity, Infinity, Infinity),
+    max: new THREE.Vector3(-Infinity, -Infinity, -Infinity),
+  };
+  vertices.forEach((vertex) => {
+    bounds.min.min(vertex);
+    bounds.max.max(vertex);
+  });
+  return {
+    name: volume.name,
+    vertices,
+    faces,
+    edges,
+    center: centerPoint,
+    radius: Math.max(...vertices.map((vertex) => vertex.distanceTo(centerPoint))),
+    tolerance: 0,
+    bounds,
+  };
+}
+
+function findHoldOverlap(hold, excludedHold = hold) {
+  const candidate = transformHoldHull(
+    hold.userData.holdType,
+    hold.getWorldPosition(new THREE.Vector3()),
+    hold.getWorldQuaternion(new THREE.Quaternion()),
+  );
+  const intersectingVolume = currentVolumeHulls.find((volumeHull) => (
+    holdHullsIntersect(candidate, volumeHull)
+  ));
+  if (intersectingVolume) return intersectingVolume.name;
+
+  let intersectingHold = null;
+  root.traverse((object) => {
+    if (intersectingHold || !isHold(object) || object === excludedHold) return;
+    const otherHull = transformHoldHull(
+      object.userData.holdType,
+      object.getWorldPosition(new THREE.Vector3()),
+      object.getWorldQuaternion(new THREE.Quaternion()),
+    );
+    if (holdHullsIntersect(candidate, otherHull)) {
+      intersectingHold = object.userData.jsonKey ?? object.name;
+    }
+  });
+  return intersectingHold;
+}
+
+function validateHoldRecords(holdRecords, volumes) {
+  const volumeHulls = volumes.map(createVolumeHull);
+  const placedHulls = [];
+  for (const record of holdRecords) {
+    const type = getHoldTypeFromRecordType(record.type);
+    const quaternion = new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(
+        record.orientation.roll,
+        record.orientation.pitch,
+        record.orientation.yaw,
+        "XYZ",
+      ),
+    );
+    const candidate = transformHoldHull(
+      type,
+      new THREE.Vector3(record.position.x, record.position.y, record.position.z),
+      quaternion,
+    );
+    const intersectingVolume = volumeHulls.find((volumeHull) => (
+      holdHullsIntersect(candidate, volumeHull)
+    ));
+    if (intersectingVolume) {
+      throw new Error(`${record.name} overlaps ${intersectingVolume.name}.`);
+    }
+    const intersectingHold = placedHulls.find(({ hull }) => holdHullsIntersect(candidate, hull));
+    if (intersectingHold) {
+      throw new Error(`${record.name} overlaps ${intersectingHold.name}.`);
+    }
+    placedHulls.push({ name: record.name, hull: candidate });
+  }
 }
 
 function isHold(object) {
@@ -737,10 +886,10 @@ function sampleSurface(surfaces, random) {
   const point = a.clone()
     .addScaledVector(new THREE.Vector3().subVectors(b, a), u)
     .addScaledVector(new THREE.Vector3().subVectors(c, a), v);
-  return { point, normal: surface.normal };
+  return { point, normal: surface.normal, volumeName: surface.volumeName };
 }
 
-function addHolds(group, surfaces, count, seed) {
+function addHolds(group, surfaces, count, seed, volumeHulls) {
   if (count > 0 && !Object.values(holdGeometries).every(Boolean)) {
     throw new Error("All hold meshes must be loaded before generating holds.");
   }
@@ -759,7 +908,10 @@ function addHolds(group, surfaces, count, seed) {
       const holdTypes = ["Microban", "Sidepull", "Fingerpocket"];
       const type = holdTypes[Math.floor(random() * holdTypes.length)];
       hold = makeHold(type, color);
-      const { point, normal } = sampleSurface(surfaces, random);
+      const { point, normal, volumeName } = sampleSurface(surfaces, random);
+      if (volumeName) {
+        point.addScaledVector(normal, HOLD_HULL_TOLERANCE * 2);
+      }
       // The STL's backface is normalized to local z = 0, so this anchors it
       // directly on the sampled face.
       hold.position.copy(point);
@@ -769,7 +921,8 @@ function addHolds(group, surfaces, count, seed) {
       hold.rotateZ(faceRotation);
 
       const hull = transformHoldHull(type, hold.position, hold.quaternion);
-      const clear = placed.every((other) => !holdHullsIntersect(hull, other));
+      const clear = volumeHulls.every((volumeHull) => !holdHullsIntersect(hull, volumeHull))
+        && placed.every((other) => !holdHullsIntersect(hull, other));
       if (clear) {
         hold.name = `${type}Hold_${i}`;
         group.add(hold);
@@ -957,6 +1110,9 @@ function updateHoldMove(event) {
   const alignment = new THREE.Quaternion().setFromUnitVectors(currentNormal, targetNormal);
   selectedHold.quaternion.premultiply(alignment);
   selectedHold.position.copy(surfaceHit.point);
+  if (surfaceHit.object.userData.volumeName) {
+    selectedHold.position.addScaledVector(targetNormal, HOLD_HULL_TOLERANCE * 2);
+  }
   holdMove.coordinatesEdited = false;
   updateHoldMoveInputs(selectedHold.position);
   holdStatus.textContent = `Moving ${selectedHold.userData.jsonKey} · snapped to ${surfaceHit.object.name}; left-click or Enter to finish, Esc or right-click to cancel.`;
@@ -967,6 +1123,14 @@ function finishHoldMove(commit) {
   if (commit && !applyHoldMoveInputs()) {
     holdStatus.textContent = "Enter valid numeric values for X, Y, and Z before finishing the move.";
     return;
+  }
+  if (commit && selectedHold) {
+    const overlap = findHoldOverlap(selectedHold);
+    if (overlap) {
+      holdStatus.textContent = `${selectedHold.userData.jsonKey} overlaps ${overlap}; adjust its position before finishing.`;
+      holdStatus.dataset.error = "true";
+      return;
+    }
   }
   const removeNewHold = !commit && holdMove.newlyCreated && selectedHold;
   const newlyCreatedHold = holdMove.newlyCreated;
@@ -1066,6 +1230,13 @@ function addVolume() {
   };
   constrainVolumeDepth(volume);
   sceneSpec.volumes.push(volume);
+  try {
+    validateHoldRecords(getHoldRecords(), sceneSpec.volumes);
+  } catch (error) {
+    holdStatus.textContent = error instanceof Error ? error.message : String(error);
+    holdStatus.dataset.error = "true";
+    return;
+  }
   rebuildScene(
     sceneSpec,
     getHoldRecords(),
@@ -1156,6 +1327,7 @@ function startHoldRotation() {
   );
   holdRotation = {
     quaternion: selectedHold.quaternion.clone(),
+    position: selectedHold.position.clone(),
     backplateAnchor,
     pointerX: lastPointerX,
     initialYaw: currentYaw,
@@ -1173,7 +1345,23 @@ function startHoldRotation() {
 function finishHoldRotation(commit) {
   if (!holdRotation) return;
   const initialYaw = holdRotation.initialYaw;
+  if (commit && selectedHold) {
+    const overlap = findHoldOverlap(selectedHold);
+    if (overlap) {
+      selectedHold.position.copy(holdRotation.position);
+      selectedHold.quaternion.copy(holdRotation.quaternion);
+      holdRotation = null;
+      controls.enabled = true;
+      holdRotationControl.hidden = true;
+      holdRotationInput.value = initialYaw.toFixed(1);
+      canvas.style.cursor = "";
+      holdStatus.textContent = `${selectedHold.userData.jsonKey} overlaps ${overlap}; rotation was cancelled.`;
+      holdStatus.dataset.error = "true";
+      return;
+    }
+  }
   if (!commit && selectedHold) {
+    selectedHold.position.copy(holdRotation.position);
     selectedHold.quaternion.copy(holdRotation.quaternion);
   }
 
@@ -1479,8 +1667,14 @@ function loadSceneFromJson() {
   if (!Number.isInteger(seed)) {
     throw new Error("seed must be a whole number.");
   }
+  const constrainedVolumes = sceneSpec.volumes.map((volume) => ({
+    ...volume,
+    center: { ...volume.center },
+  }));
+  constrainedVolumes.forEach(constrainVolumeDepth);
+  validateHoldRecords(holdData, constrainedVolumes);
   const holdColors = [0xf2554e, 0x59c77b, 0x6389ed];
-  rebuildScene(sceneSpec, holdData, holdColors, seed, materialSeed);
+  rebuildScene({ ...sceneSpec, volumes: constrainedVolumes }, holdData, holdColors, seed, materialSeed);
 }
 
 function makeHoldsFromRecords(holdData, holdColors) {
@@ -1549,6 +1743,7 @@ function rebuildScene(
   );
   const { wall: wallSpec, volumes: volumeSpecs } = sceneSpec;
   volumeSpecs.forEach(constrainVolumeDepth);
+  const volumeHulls = volumeSpecs.map(createVolumeHull);
   const surfaces = [];
   const frontZ = WALL_FRONT_Z;
   surfaces.push({
@@ -1576,7 +1771,7 @@ function rebuildScene(
   });
   const holds = holdRecords
     ? makeHoldsFromRecords(holdRecords, holdColors)
-    : addHolds(nextRoot, surfaces, holdCount, seed);
+    : addHolds(nextRoot, surfaces, holdCount, seed, volumeHulls);
   if (holdRecords) nextRoot.add(...holds);
   nextRoot.updateMatrixWorld(true);
 
@@ -1598,6 +1793,7 @@ function rebuildScene(
   root.clear();
   root.add(nextRoot);
   currentSceneSpec = structuredClone(sceneSpec);
+  currentVolumeHulls = volumeHulls;
   wallWidthInput.value = String(sceneSpec.wall.width);
   wallHeightInput.value = String(sceneSpec.wall.height);
   currentSeed = seed;

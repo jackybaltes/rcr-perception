@@ -35,8 +35,10 @@ right-click cancels its placement and removes it. CubeHold uses
 FingerpocketHold uses `Assets/fingerpocket_hold.stl`. Randomly generated scenes
 choose between MicrobanHold, SidepullHold, and FingerpocketHold for each
 generated hold.
-Randomly generated holds are spaced using convex collision hulls built from
-each hold mesh, so the hulls do not intersect.
+Generated holds use convex collision hulls built from each hold mesh and are
+kept from intersecting other holds or volume bodies. JSON updates and manual
+hold moves or rotations also reject intersections. Hull checks conservatively
+account for a 1 mm mesh-simplification tolerance.
 Press **X** to delete the selected hold. Click **Press ? for help** to open the
 control guide on the right side of the 3D view; click **?** again or press
 **Escape** to close it.
