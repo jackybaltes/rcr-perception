@@ -27,16 +27,19 @@ and Y spacing fields at the top of the view (both initially 0.1 m) to set grid
 spacing; spacing must be positive, and values that would create an excessively
 dense grid are rejected with a visible message.
 Press **Shift+A** to open the add menu. Choose **Volume** to add a volume at its
-default position, or **MicrobanHold** or **CubeHold** to add that hold and
-immediately place it with face-snapping translation. Left-click or Enter
-commits the new hold; Escape or right-click cancels its placement and removes
-it. CubeHold uses `Assets/cubehold_blend.stl`.
+default position, or **MicrobanHold**, **CubeHold**, or **SidepullHold** to add
+that hold and immediately place it with face-snapping translation. Left-click
+or Enter commits the new hold; Escape or right-click cancels its placement and
+removes it. CubeHold uses `Assets/cube_hold.stl`, and SidepullHold uses
+`Assets/sidehpull_hold.stl`. Randomly generated scenes choose between MicrobanHold
+and SidepullHold for each generated hold.
 Press **X** to delete the selected hold. Click **Press ? for help** to open the
 control guide on the right side of the 3D view; click **?** again or press
 **Escape** to close it.
 
-The MicrobanHold and CubeHold meshes are loaded from
-`Assets/microban_hold.stl` and `Assets/cubehold_blend.stl`. The Blender wall
+The MicrobanHold, CubeHold, and SidepullHold meshes are loaded from
+`Assets/microban_hold.stl`, `Assets/cube_hold.stl`, and
+`Assets/sidehpull_hold.stl`. The Blender wall
 generator uses half of each configured wall dimension, so the recreated wall
 defaults to 0.8 m wide by 1.4 m high.
 Generated and added volumes scale with wall width, with no dimension exceeding
@@ -55,9 +58,10 @@ dimensions and origin marker, each volume's center and dimensions, the seed,
 material variation seed, and every hold's color, world position, and
 orientation. Edit the JSON and select
 **Load scene from JSON** to restore the wall, volumes, and holds. Hold records
-require a `microban_hold` or `cube_hold` type, finite `position` x/y/z values
-in meters, and finite `orientation` roll/pitch/yaw values in radians. Older
-hold-only JSON files are still accepted and retain the current wall and volumes.
+require a `microban_hold`, `cube_hold`, or `sidepull_hold` type, finite
+`position` x/y/z values in meters, and finite `orientation` roll/pitch/yaw
+values in radians. Older hold-only JSON files are still accepted and retain the
+current wall and volumes.
 Hold colors are serialized as `#RRGGBB` hexadecimal strings; legacy 24-bit
 integer colors remain accepted when loading.
 Use **Load scene from disk** to restore a saved scene, or **Save scene to disk**
@@ -88,8 +92,8 @@ seed, and hold count to control the generated scene.
 
 Open the app at [jackybaltes.github.io/rcr-perception/ThreeJS](https://jackybaltes.github.io/rcr-perception/ThreeJS/).
 
-The GitHub Actions workflow deploys the browser app from `ThreeJS/` and the two
-STL hold meshes it loads from `Assets/`. It runs when relevant files are pushed
+The GitHub Actions workflow deploys the browser app from `ThreeJS/` and the
+three STL hold meshes it loads from `Assets/`. It runs when relevant files are pushed
 to `main`, or can be started manually from the repository's Actions tab. In the
 repository settings, set **Pages → Build and deployment → Source** to **GitHub
 Actions**. After deployment, open the `ThreeJS/` path under the repository's

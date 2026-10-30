@@ -186,9 +186,15 @@ const gridMaterial = new THREE.LineBasicMaterial({
   depthWrite: false,
   toneMapped: false,
 });
+const holdRecordTypes = {
+  Microban: "microban_hold",
+  CubeHold: "cube_hold",
+  Sidepull: "sidepull_hold",
+};
 const holdGeometries = {
   Microban: null,
   CubeHold: null,
+  Sidepull: null,
 };
 let generation = 0;
 let selectedHold = null;
@@ -485,6 +491,10 @@ function makeHold(type, color) {
   return hold;
 }
 
+function getHoldTypeFromRecordType(recordType) {
+  return Object.keys(holdRecordTypes).find((type) => holdRecordTypes[type] === recordType);
+}
+
 function normalizeHoldGeometry(geometry) {
   // Convert Blender coordinates (X, Y, Z) to Three.js coordinates (X, Z, -Y).
   const conversion = new THREE.Matrix4().set(
@@ -552,8 +562,8 @@ function sampleSurface(surfaces, random) {
 }
 
 function addHolds(group, surfaces, count, seed) {
-  if (count > 0 && !holdGeometries.Microban) {
-    throw new Error("Microban hold mesh is not loaded.");
+  if (count > 0 && (!holdGeometries.Microban || !holdGeometries.Sidepull)) {
+    throw new Error("Microban and Sidepull hold meshes must be loaded.");
   }
 
   const random = seededRandom(seed ^ 0x9e3779b9);
@@ -567,7 +577,8 @@ function addHolds(group, surfaces, count, seed) {
     let placedSuccessfully = false;
     for (let attempt = 0; attempt < 1000; attempt += 1) {
       const color = colors[Math.floor(random() * colors.length)];
-      hold = makeHold("Microban", color);
+      const type = random() < 0.5 ? "Microban" : "Sidepull";
+      hold = makeHold(type, color);
       const { point, normal } = sampleSurface(surfaces, random);
       // The STL's backface is normalized to local z = 0, so this anchors it
       // directly on the sampled face.
@@ -584,7 +595,7 @@ function addHolds(group, surfaces, count, seed) {
         (other) => center.distanceTo(other.center) >= radius + other.radius + minimumClearance,
       );
       if (clear) {
-        hold.name = `MicrobanHold_${i}`;
+        hold.name = `${type}Hold_${i}`;
         group.add(hold);
         holds.push(hold);
         placed.push({ center: center.clone(), radius });
@@ -613,7 +624,7 @@ function serializeSceneData(holds) {
     );
     hold.userData.jsonKey = key;
     holdData[key] = {
-      type: hold.userData.holdType === "CubeHold" ? "cube_hold" : "microban_hold",
+      type: holdRecordTypes[hold.userData.holdType],
       color: `#${hold.material.color.getHexString().toUpperCase()}`,
       position: {
         x: round(position.x),
@@ -668,7 +679,7 @@ function getHoldRecords() {
     );
     holds.push({
       name: object.userData.jsonKey,
-      type: object.userData.holdType === "CubeHold" ? "cube_hold" : "microban_hold",
+      type: holdRecordTypes[object.userData.holdType],
       color: object.material.color.getHex(),
       position: object.getWorldPosition(new THREE.Vector3()),
       orientation: {
@@ -918,7 +929,7 @@ addMenu.addEventListener("click", (event) => {
   closeAddMenu(true);
   if (button.dataset.addType === "volume") {
     addVolume();
-  } else if (button.dataset.addType === "Microban" || button.dataset.addType === "CubeHold") {
+  } else if (Object.hasOwn(holdGeometries, button.dataset.addType)) {
     addHold(button.dataset.addType);
   }
 });
@@ -1144,8 +1155,8 @@ function parseHoldRecords(data) {
     if (!hold || typeof hold !== "object" || Array.isArray(hold)) {
       throw new Error(`${name} must be a hold object.`);
     }
-    if (hold.type !== "microban_hold" && hold.type !== "cube_hold") {
-      throw new Error(`${name}.type must be "microban_hold" or "cube_hold".`);
+    if (!Object.values(holdRecordTypes).includes(hold.type)) {
+      throw new Error(`${name}.type must be "microban_hold", "cube_hold", or "sidepull_hold".`);
     }
 
     const { position, orientation } = hold;
@@ -1278,10 +1289,10 @@ function loadSceneFromJson() {
     holds: holdData,
   } = parseSceneData(holdJson.value);
   const missingHoldType = holdData.find((hold) => !holdGeometries[
-    hold.type === "cube_hold" ? "CubeHold" : "Microban"
+    getHoldTypeFromRecordType(hold.type)
   ]);
   if (missingHoldType) {
-    const typeName = missingHoldType.type === "cube_hold" ? "CubeHold" : "Microban";
+    const typeName = getHoldTypeFromRecordType(missingHoldType.type);
     throw new Error(`${typeName} hold mesh is not loaded yet.`);
   }
 
@@ -1294,7 +1305,7 @@ function loadSceneFromJson() {
 
 function makeHoldsFromRecords(holdData, holdColors) {
   return holdData.map(({ name, type, color, position, orientation }, index) => {
-    const holdType = type === "cube_hold" ? "CubeHold" : "Microban";
+    const holdType = getHoldTypeFromRecordType(type);
     const hold = makeHold(holdType, color ?? holdColors[index % holdColors.length]);
     hold.name = name;
     hold.userData.jsonKey = name;
@@ -1527,7 +1538,7 @@ async function generateRandomWall({
 
 window.RCRWallAPI = {
   generateRandomWall,
-  isReady: () => Boolean(holdGeometries.Microban && holdGeometries.CubeHold),
+  isReady: () => Object.values(holdGeometries).every(Boolean),
 };
 
 function resize() {
@@ -1733,12 +1744,14 @@ render();
 try {
   status.textContent = "Loading hold meshes…";
   const loader = new STLLoader();
-  const [microban, cubeHold] = await Promise.all([
+  const [microban, cubeHold, sidepull] = await Promise.all([
     loader.loadAsync("../Assets/microban_hold.stl"),
-    loader.loadAsync("../Assets/cubehold_blend.stl"),
+    loader.loadAsync("../Assets/cube_hold.stl"),
+    loader.loadAsync("../Assets/sidehpull_hold.stl"),
   ]);
   holdGeometries.Microban = normalizeHoldGeometry(microban);
   holdGeometries.CubeHold = normalizeHoldGeometry(cubeHold);
+  holdGeometries.Sidepull = normalizeHoldGeometry(sidepull);
   rebuildScene();
 } catch (error) {
   status.textContent = `Could not load the hold meshes: ${error instanceof Error ? error.message : String(error)}`;
