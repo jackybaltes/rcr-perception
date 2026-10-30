@@ -27,23 +27,26 @@ and Y spacing fields at the top of the view (both initially 0.1 m) to set grid
 spacing; spacing must be positive, and values that would create an excessively
 dense grid are rejected with a visible message.
 Press **Shift+A** to open the add menu. Choose **Volume** to add a volume at its
-default position, or **MicrobanHold**, **CubeHold**, or **SidepullHold** to add
-that hold and immediately place it with face-snapping translation. Left-click
-or Enter commits the new hold; Escape or right-click cancels its placement and
-removes it. CubeHold uses `Assets/cube_hold.stl`, and SidepullHold uses
-`Assets/sidehpull_hold.stl`. Randomly generated scenes choose between MicrobanHold
-and SidepullHold for each generated hold.
+default position, or **MicrobanHold**, **CubeHold**, **SidepullHold**, or
+**FingerpocketHold** to add that hold and immediately place it with
+face-snapping translation. Left-click or Enter commits the new hold; Escape or
+right-click cancels its placement and removes it. CubeHold uses
+`Assets/cube_hold.stl`, SidepullHold uses `Assets/sidehpull_hold.stl`, and
+FingerpocketHold uses `Assets/fingerpocket_hold.stl`. Randomly generated scenes
+choose between MicrobanHold, SidepullHold, and FingerpocketHold for each
+generated hold.
 Press **X** to delete the selected hold. Click **Press ? for help** to open the
 control guide on the right side of the 3D view; click **?** again or press
 **Escape** to close it.
 
-The MicrobanHold, CubeHold, and SidepullHold meshes are loaded from
-`Assets/microban_hold.stl`, `Assets/cube_hold.stl`, and
-`Assets/sidehpull_hold.stl`. The Blender wall
-generator uses half of each configured wall dimension, so the recreated wall
-defaults to 0.8 m wide by 1.4 m high.
-Generated and added volumes scale with wall width, with no dimension exceeding
-25% of the wall width. The calibration square is 0.1 m by 0.1 m when the wall
+The MicrobanHold, CubeHold, SidepullHold, and FingerpocketHold meshes are loaded
+from `Assets/microban_hold.stl`, `Assets/cube_hold.stl`,
+`Assets/sidehpull_hold.stl`, and `Assets/fingerpocket_hold.stl`. The Blender
+wall generator uses half of each configured wall dimension, so the recreated
+wall defaults to 0.8 m wide by 1.4 m high.
+Generated and added volumes scale with wall width, with no base dimension
+exceeding 25% of the wall width. Their depth is kept below half the shortest
+side of the triangular base. The calibration square is 0.1 m by 0.1 m when the wall
 is narrower than 2 m, and 1 m by 1 m otherwise.
 Enable **Upd. Seed** beside the seed field to generate a fresh random seed on
 each **Regenerate scene** action; leave it unchecked to regenerate from the
@@ -57,11 +60,11 @@ The Scene data (JSON) field contains a versioned scene description with wall
 dimensions and origin marker, each volume's center and dimensions, the seed,
 material variation seed, and every hold's color, world position, and
 orientation. Edit the JSON and select
-**Load scene from JSON** to restore the wall, volumes, and holds. Hold records
-require a `microban_hold`, `cube_hold`, or `sidepull_hold` type, finite
-`position` x/y/z values in meters, and finite `orientation` roll/pitch/yaw
-values in radians. Older hold-only JSON files are still accepted and retain the
-current wall and volumes.
+**Update scene from JSON** to apply it to the wall, volumes, and holds. Hold records
+require a `microban_hold`, `cube_hold`, `sidepull_hold`, or
+`fingerpocket_hold` type, finite `position` x/y/z values in meters, and finite
+`orientation` roll/pitch/yaw values in radians. Older hold-only JSON files are
+still accepted and retain the current wall and volumes.
 Hold colors are serialized as `#RRGGBB` hexadecimal strings; legacy 24-bit
 integer colors remain accepted when loading.
 Use **Load scene from disk** to restore a saved scene, or **Save scene to disk**

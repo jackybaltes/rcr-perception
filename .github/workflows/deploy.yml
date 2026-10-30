@@ -9,6 +9,7 @@ on:
       - "Assets/microban_hold.stl"
       - "Assets/cube_hold.stl"
       - "Assets/sidehpull_hold.stl"
+      - "Assets/fingerpocket_hold.stl"
       - ".github/workflows/deploy.yml"
   workflow_dispatch:
 
@@ -39,7 +40,7 @@ jobs:
         run: |
           mkdir -p _site/Assets
           cp -R ThreeJS _site/ThreeJS
-          cp Assets/microban_hold.stl Assets/cube_hold.stl Assets/sidehpull_hold.stl _site/Assets/
+          cp Assets/microban_hold.stl Assets/cube_hold.stl Assets/sidehpull_hold.stl Assets/fingerpocket_hold.stl _site/Assets/
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

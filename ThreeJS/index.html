@@ -66,6 +66,7 @@
           <button type="button" role="menuitem" data-add-type="Microban">MicrobanHold</button>
           <button type="button" role="menuitem" data-add-type="CubeHold">CubeHold</button>
           <button type="button" role="menuitem" data-add-type="Sidepull">SidepullHold</button>
+          <button type="button" role="menuitem" data-add-type="Fingerpocket">FingerpocketHold</button>
         </div>
         <div id="hold-move-control" class="hold-transform-control hold-move-control" hidden>
           <label for="hold-move-x">X</label>
@@ -92,7 +93,7 @@
             <li><kbd>R</kbd> rotates the selected hold; enter an absolute yaw angle.</li>
             <li><kbd>Shift</kbd>+<kbd>G</kbd> toggles the wall grid; set X/Y spacing in meters.</li>
             <li><kbd>X</kbd> deletes the selected hold.</li>
-            <li><kbd>Shift</kbd>+<kbd>A</kbd> opens the add menu for a volume, MicrobanHold, CubeHold, or SidepullHold.</li>
+            <li><kbd>Shift</kbd>+<kbd>A</kbd> opens the add menu for a volume, MicrobanHold, CubeHold, SidepullHold, or FingerpocketHold.</li>
             <li><kbd>C</kbd> resets the camera to 1 m height and 2 m from the wall.</li>
             <li><kbd>Esc</kbd> or right-click cancels a transform.</li>
             <li>Drag to orbit, scroll to zoom, and right-drag to pan.</li>
@@ -130,7 +131,7 @@
           <input id="hold-json-file" type="file" accept=".json,application/json" hidden>
           <button id="load-holds-file" type="button">Load scene from disk</button>
           <button id="save-holds-file" type="button">Save scene to disk</button>
-          <button id="load-holds" type="button">Load scene from JSON</button>
+          <button id="load-holds" type="button">Update scene from JSON</button>
           <div id="hold-status" role="status" aria-live="polite"></div>
         </div>
       </section>

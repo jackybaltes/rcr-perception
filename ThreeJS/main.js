@@ -190,11 +190,13 @@ const holdRecordTypes = {
   Microban: "microban_hold",
   CubeHold: "cube_hold",
   Sidepull: "sidepull_hold",
+  Fingerpocket: "fingerpocket_hold",
 };
 const holdGeometries = {
   Microban: null,
   CubeHold: null,
   Sidepull: null,
+  Fingerpocket: null,
 };
 let generation = 0;
 let selectedHold = null;
@@ -296,6 +298,15 @@ function constrainVolumeSize(volume, wallWidth, wallHeight, scale = 1) {
   volume.baseWidth = Math.min(volume.baseWidth * scale, maximumDimension);
   volume.baseHeight = Math.min(volume.baseHeight * scale, maximumDimension, wallHeight);
   volume.depth = Math.min(volume.depth * scale, maximumDimension);
+  constrainVolumeDepth(volume);
+}
+
+function constrainVolumeDepth(volume) {
+  const shortestBaseSide = Math.min(
+    volume.baseWidth,
+    Math.hypot(volume.baseWidth / 2, volume.baseHeight),
+  );
+  volume.depth = Math.min(volume.depth, shortestBaseSide * 0.499999);
 }
 
 function createRandomSceneSpec(seed, volumeCount, wallWidth = WALL_WIDTH, wallHeight = WALL_HEIGHT) {
@@ -562,8 +573,8 @@ function sampleSurface(surfaces, random) {
 }
 
 function addHolds(group, surfaces, count, seed) {
-  if (count > 0 && (!holdGeometries.Microban || !holdGeometries.Sidepull)) {
-    throw new Error("Microban and Sidepull hold meshes must be loaded.");
+  if (count > 0 && !Object.values(holdGeometries).every(Boolean)) {
+    throw new Error("All hold meshes must be loaded before generating holds.");
   }
 
   const random = seededRandom(seed ^ 0x9e3779b9);
@@ -577,7 +588,8 @@ function addHolds(group, surfaces, count, seed) {
     let placedSuccessfully = false;
     for (let attempt = 0; attempt < 1000; attempt += 1) {
       const color = colors[Math.floor(random() * colors.length)];
-      const type = random() < 0.5 ? "Microban" : "Sidepull";
+      const holdTypes = ["Microban", "Sidepull", "Fingerpocket"];
+      const type = holdTypes[Math.floor(random() * holdTypes.length)];
       hold = makeHold(type, color);
       const { point, normal } = sampleSurface(surfaces, random);
       // The STL's backface is normalized to local z = 0, so this anchors it
@@ -878,7 +890,7 @@ function addVolume() {
   let index = 0;
   while (sceneSpec.volumes.some((volume) => volume.name === `Volume_${index}`)) index += 1;
   const addedVolumeCount = Math.max(0, sceneSpec.volumes.length - DEFAULT_SCENE.volumes.length);
-  sceneSpec.volumes.push({
+  const volume = {
     name: `Volume_${index}`,
     center: {
       x: 0,
@@ -887,7 +899,9 @@ function addVolume() {
     baseWidth,
     baseHeight,
     depth: currentSceneSpec.wall.width * 0.125,
-  });
+  };
+  constrainVolumeDepth(volume);
+  sceneSpec.volumes.push(volume);
   rebuildScene(
     sceneSpec,
     getHoldRecords(),
@@ -1156,7 +1170,9 @@ function parseHoldRecords(data) {
       throw new Error(`${name} must be a hold object.`);
     }
     if (!Object.values(holdRecordTypes).includes(hold.type)) {
-      throw new Error(`${name}.type must be "microban_hold", "cube_hold", or "sidepull_hold".`);
+      throw new Error(
+        `${name}.type must be "microban_hold", "cube_hold", "sidepull_hold", or "fingerpocket_hold".`,
+      );
     }
 
     const { position, orientation } = hold;
@@ -1368,6 +1384,7 @@ function rebuildScene(
     noiseParameters,
   );
   const { wall: wallSpec, volumes: volumeSpecs } = sceneSpec;
+  volumeSpecs.forEach(constrainVolumeDepth);
   const surfaces = [];
   const frontZ = WALL_FRONT_Z;
   surfaces.push({
@@ -1744,14 +1761,16 @@ render();
 try {
   status.textContent = "Loading hold meshes…";
   const loader = new STLLoader();
-  const [microban, cubeHold, sidepull] = await Promise.all([
+  const [microban, cubeHold, sidepull, fingerpocket] = await Promise.all([
     loader.loadAsync("../Assets/microban_hold.stl"),
     loader.loadAsync("../Assets/cube_hold.stl"),
     loader.loadAsync("../Assets/sidehpull_hold.stl"),
+    loader.loadAsync("../Assets/fingerpocket_hold.stl"),
   ]);
   holdGeometries.Microban = normalizeHoldGeometry(microban);
   holdGeometries.CubeHold = normalizeHoldGeometry(cubeHold);
   holdGeometries.Sidepull = normalizeHoldGeometry(sidepull);
+  holdGeometries.Fingerpocket = normalizeHoldGeometry(fingerpocket);
   rebuildScene();
 } catch (error) {
   status.textContent = `Could not load the hold meshes: ${error instanceof Error ? error.message : String(error)}`;
