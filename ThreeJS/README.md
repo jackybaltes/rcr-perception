@@ -77,11 +77,17 @@ to download the current JSON as `climbing-scene.json`.
 Use the **Compare with another scene** panel below the JSON editor to load a test
 JSON file. It compares that file with the active JSON, matching holds to holds
 and volumes to volumes when their positions are no more than 10 cm apart.
-True Positive counts matched active objects; True Negative Score counts test
-objects with no active match. Matching is one-to-one. The result table shows
+It reports active matched volumes (AMV) and holds (AMH) as the percentage of
+active objects matched in the test file, and test matched volumes (TMV) and
+holds (TMH) as the percentage of test objects matched in the active scene.
+Each rate also shows its matched and total counts; an empty object category is
+reported as N/A. Matching is one-to-one. The result table shows
 each matched position error and, for holds, the roll/pitch/yaw differences in
-degrees. Orientation does not affect the position-based score, and volumes have
-no orientation field in the scene format. Comparison uses the live active scene,
+degrees. Matched holds have a weighted error score of position squared error
+(weight 1) plus orientation squared error in radians (weight 0.5), with a
+penalty of 2 for a hold-type mismatch. The panel reports each matched pair's
+score and the summed active-side and test-side scores; lower is better.
+Volumes have no orientation field or hold score. Comparison uses the live active scene,
 including applied grab and rotation transforms, rather than unapplied edits in
 the JSON editor. Test holds and volume outlines appear
 as cyan and orange wireframes in the 3D views; toggle this overlay as needed.

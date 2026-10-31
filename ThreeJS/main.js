@@ -12,6 +12,9 @@ const HOLD_HULL_GRID = 0.001;
 const HOLD_HULL_TOLERANCE = Math.sqrt(3) * HOLD_HULL_GRID / 2;
 const POSITION_MATCH_TOLERANCE = 0.1;
 const POSITION_MATCH_EPSILON = 1e-9;
+const HOLD_SCORE_POSITION_WEIGHT = 1;
+const HOLD_SCORE_ORIENTATION_WEIGHT = 0.5;
+const HOLD_SCORE_TYPE_MISMATCH_PENALTY = 2;
 function originMarkerDimensions(wallWidth, wallHeight) {
   const markerSize = wallWidth < 2 ? 0.1 : 1;
   const width = Math.min(markerSize, wallWidth);
@@ -1051,11 +1054,34 @@ function wrappedAngleDifference(first, second) {
   return Math.abs(Math.atan2(Math.sin(first - second), Math.cos(first - second)));
 }
 
-function orientationDifference(active, test) {
+function orientationDifferenceRadians(active, test) {
   return ["roll", "pitch", "yaw"].map((angle) => (
     wrappedAngleDifference(active.orientation[angle], test.orientation[angle])
-      * 180 / Math.PI
   ));
+}
+
+function orientationDifference(active, test) {
+  return orientationDifferenceRadians(active, test).map((angle) => (
+    angle * 180 / Math.PI
+  ));
+}
+
+function holdMatchScore(active, test) {
+  const positionError = distanceBetween(active.position, test.position);
+  const orientationError = orientationDifferenceRadians(active, test);
+  const orientationSquaredError = orientationError.reduce(
+    (sum, angle) => sum + angle ** 2,
+    0,
+  );
+  const typeMismatchPenalty = active.type === test.type
+    ? 0
+    : HOLD_SCORE_TYPE_MISMATCH_PENALTY;
+
+  return (
+    HOLD_SCORE_POSITION_WEIGHT * positionError ** 2
+    + HOLD_SCORE_ORIENTATION_WEIGHT * orientationSquaredError
+    + typeMismatchPenalty
+  );
 }
 
 function getComparisonItems(parsedScene) {
@@ -1147,13 +1173,23 @@ function renderComparisonOverlay(testItems) {
   comparisonOverlay.visible = showComparisonOverlayInput.checked;
 }
 
-function appendComparisonRow(activeName, testName, kind, distance, angles) {
+function appendComparisonRow(
+  activeName,
+  testName,
+  kind,
+  distance,
+  angles,
+  activeHoldScore = null,
+  testHoldScore = null,
+) {
   const row = document.createElement("tr");
   const values = [
     activeName ?? "—",
     `${kind}: ${testName}`,
     activeName === null ? "No active match" : `${(distance * 100).toFixed(1)} cm`,
     angles ? angles.map((angle) => `${angle.toFixed(1)}°`).join(" / ") : "—",
+    activeHoldScore === null ? "—" : activeHoldScore.toFixed(6),
+    testHoldScore === null ? "—" : testHoldScore.toFixed(6),
   ];
   values.forEach((value) => {
     const cell = document.createElement("td");
@@ -1178,20 +1214,27 @@ function compareLoadedScene() {
   const holdMatches = findPositionMatches(activeItems.holds, testItems.holds);
   const volumeMatches = findPositionMatches(activeItems.volumes, testItems.volumes);
   const matches = [...holdMatches, ...volumeMatches];
-  const activeCount = activeItems.holds.length + activeItems.volumes.length;
-  const testCount = testItems.holds.length + testItems.volumes.length;
-  const trueNegative = testCount - matches.length;
-  const unmatchedTestHolds = testItems.holds.length - holdMatches.length;
-  const unmatchedTestVolumes = testItems.volumes.length - volumeMatches.length;
+  const formatRate = (matched, total) => (
+    `${total > 0 ? `${(matched / total * 100).toFixed(1)}%` : "N/A"} (${matched}/${total})`
+  );
+  let activeMatchedHoldScore = 0;
+  let testMatchedHoldScore = 0;
 
   comparisonRows.replaceChildren();
   matches.forEach(({ active, test, distance }) => {
+    const score = test.kind === "hold" ? holdMatchScore(active, test) : null;
+    if (score !== null) {
+      activeMatchedHoldScore += score;
+      testMatchedHoldScore += score;
+    }
     appendComparisonRow(
       active.name,
       test.name,
       test.kind,
       distance,
       test.kind === "hold" ? orientationDifference(active, test) : null,
+      score,
+      score,
     );
   });
   [...testItems.holds, ...testItems.volumes].forEach((test) => {
@@ -1199,10 +1242,14 @@ function compareLoadedScene() {
     if (!matched) appendComparisonRow(null, test.name, test.kind, null, null);
   });
   comparisonScore.textContent = [
-    `True Positive: ${matches.length} / ${activeCount} active items found (${holdMatches.length} holds, ${volumeMatches.length} volumes).`,
-    `True Negative Score: ${trueNegative} / ${testCount} test items have no active match (${unmatchedTestHolds} holds, ${unmatchedTestVolumes} volumes).`,
-    `Active items not found in test: ${activeCount - matches.length}.`,
-  ].join(" ");
+    `Active matched volumes (AMV): ${formatRate(volumeMatches.length, activeItems.volumes.length)}`,
+    `Active matched holds (AMH): ${formatRate(holdMatches.length, activeItems.holds.length)}`,
+    `Test matched volumes (TMV): ${formatRate(volumeMatches.length, testItems.volumes.length)}`,
+    `Test matched holds (TMH): ${formatRate(holdMatches.length, testItems.holds.length)}`,
+    `Active matched hold score (sum): ${activeMatchedHoldScore.toFixed(6)}`,
+    `Test matched hold score (sum): ${testMatchedHoldScore.toFixed(6)}`,
+    "Hold score (lower is better): position × 1 + orientation × 0.5 + 2 for a type mismatch.",
+  ].join("\n");
   comparisonResults.hidden = false;
   renderComparisonOverlay(testItems);
   comparisonStatus.textContent = "Compared the active scene with the loaded test file.";
