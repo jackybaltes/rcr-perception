@@ -89,9 +89,10 @@ single-axis error scores 1), with a penalty of 2 for a hold-type mismatch.
 Matched volumes use the same 10 cm = 2 position scaling. Each unmatched object
 adds a penalty of 10 on its side. The panel reports each matched pair's score
 and the summed active-side and test-side scores; lower is better.
-Hold scores are always calculated. Use **Calculate volume scores** to toggle
-volume scoring, which uses the scaled squared center-position error, without
-affecting hold scores, match rates, match rows, or the 3D overlay. Comparison
+Hold scores are always calculated. Volume scoring is disabled by default; use
+**Calculate volume scores** to enable it. It uses the scaled squared
+center-position error without affecting hold scores, match rates, match rows,
+or the 3D overlay. Comparison
 also shows a colored Final Score badge that sums the active and test matched hold
 scores, plus the active and test matched volume scores when volume scoring is
 enabled. Unmatched volume penalties are included only when volume scoring is enabled. Its color
