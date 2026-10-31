@@ -89,6 +89,64 @@ body {
   accent-color: #d3e75c;
 }
 
+.render-mode {
+  display: grid;
+  min-width: 112px;
+  height: 54px;
+  gap: 4px;
+  margin: 0;
+  padding: 3px 5px 5px;
+  border: 1px solid #3b4951;
+  border-radius: 5px;
+}
+
+.render-mode legend {
+  padding: 0 3px;
+  color: #b7c4ca;
+  font-size: 10px;
+}
+
+.render-mode-options {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.controls .render-mode label {
+  display: block;
+  cursor: pointer;
+}
+
+.render-mode input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+.render-mode span {
+  display: block;
+  padding: 5px 10px;
+  border-radius: 3px;
+  color: #b7c4ca;
+  font-size: 11px;
+  text-align: center;
+}
+
+.render-mode input:checked + span {
+  background: #d3e75c;
+  color: #192015;
+  font-weight: 700;
+}
+
+.render-mode input:focus-visible + span {
+  outline: 2px solid #f1f4f5;
+  outline-offset: 2px;
+}
+
 .controls button {
   height: 36px;
   padding: 0 14px;

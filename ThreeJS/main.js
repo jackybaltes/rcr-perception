@@ -58,6 +58,7 @@ const volumeCountInput = document.querySelector("#volume-count");
 const seedInput = document.querySelector("#seed");
 const updateSeedInput = document.querySelector("#update-seed");
 const holdCountInput = document.querySelector("#hold-count");
+const renderModeInputs = [...document.querySelectorAll('input[name="render-mode"]')];
 const addMenu = document.querySelector("#add-menu");
 const gridControls = document.querySelector("#grid-controls");
 const gridSpacingInputs = ["x", "y"].map((axis) => (
@@ -171,7 +172,8 @@ function resetInteractiveCamera() {
   controls.enableDamping = enableDamping;
 }
 
-scene.add(new THREE.HemisphereLight(0xd9e8f3, 0x34302a, 1.1));
+const hemisphereLight = new THREE.HemisphereLight(0xd9e8f3, 0x34302a, 1.1);
+scene.add(hemisphereLight);
 const keyLight = new THREE.DirectionalLight(0xfff2dc, 4.5);
 keyLight.position.set(-4, 6, 7);
 keyLight.castShadow = true;
@@ -199,8 +201,10 @@ scene.add(frontFillLight, frontFillLight.target);
 
 const root = new THREE.Group();
 scene.add(root);
+const gymContextGroup = new THREE.Group();
+scene.add(gymContextGroup);
 const crashPadGroup = new THREE.Group();
-scene.add(crashPadGroup);
+gymContextGroup.add(crashPadGroup);
 const comparisonOverlay = new THREE.Group();
 comparisonOverlay.visible = false;
 scene.add(comparisonOverlay);
@@ -232,6 +236,7 @@ let selectedHold = null;
 let currentSceneSpec = structuredClone(DEFAULT_SCENE);
 let currentSeed = 42;
 let currentMaterialSeed = 0;
+let currentRenderMode = "real";
 let currentVolumeHulls = [];
 let testSceneData = null;
 let holdMove = null;
@@ -453,7 +458,12 @@ function rockSurfaceTexture(seed, baseHeight = 128, variation = 24) {
 }
 
 function disposeMaterial(material) {
-  new Set([material.map, material.bumpMap, material.roughnessMap])
+  new Set([
+    material.map,
+    material.bumpMap,
+    material.roughnessMap,
+    ...(material.userData.styleTextures ?? []),
+  ])
     .forEach((texture) => texture?.dispose());
   material.dispose();
 }
@@ -466,7 +476,12 @@ function holdSurfaceSeed(type, color) {
   return seed;
 }
 
-function createRockMaterial(rng, colorHsvLimits, noiseParameters) {
+function createRockMaterial(
+  rng,
+  colorHsvLimits,
+  noiseParameters,
+  realisticRoughnessRange = null,
+) {
   const noiseScale = noiseParameters[0][0]
     + rng() * (noiseParameters[0][1] - noiseParameters[0][0]);
   const noiseDetail = noiseParameters[1][0]
@@ -479,6 +494,16 @@ function createRockMaterial(rng, colorHsvLimits, noiseParameters) {
       : min
   ));
   const textureSeed = Math.floor(rng() * 0x100000000);
+  const synthRoughness = THREE.MathUtils.clamp(noiseRoughness + noiseDetail / 100, 0, 1);
+  const realisticRoughness = realisticRoughnessRange
+    ? THREE.MathUtils.clamp(
+      realisticRoughnessRange[0]
+        + rng() * (realisticRoughnessRange[1] - realisticRoughnessRange[0])
+        + noiseDetail / 100,
+      0,
+      1,
+    )
+    : synthRoughness;
   const bumpTexture = rockSurfaceTexture(textureSeed);
   const roughnessTexture = rockSurfaceTexture(textureSeed, 224, 16);
   const material = new THREE.MeshStandardMaterial({
@@ -487,8 +512,23 @@ function createRockMaterial(rng, colorHsvLimits, noiseParameters) {
     bumpMap: bumpTexture,
     roughnessMap: roughnessTexture,
     bumpScale: 0.003,
-    roughness: THREE.MathUtils.clamp(noiseRoughness + noiseDetail / 100, 0, 1),
+    roughness: realisticRoughness,
   });
+  material.userData.renderModes = {
+    synth: {
+      roughness: synthRoughness,
+      bumpMap: null,
+      roughnessMap: null,
+      bumpScale: 0,
+    },
+    real: {
+      roughness: realisticRoughness,
+      bumpMap: bumpTexture,
+      roughnessMap: roughnessTexture,
+      bumpScale: 0.003,
+    },
+  };
+  material.userData.styleTextures = [bumpTexture, roughnessTexture];
   material.map.repeat.set(noiseScale / 4, noiseScale / 6);
   material.bumpMap.repeat.copy(material.map.repeat);
   material.roughnessMap.repeat.copy(material.map.repeat);
@@ -674,8 +714,14 @@ function addWall(group, material, wallSpec, seed) {
   wall.position.set(0, wallSpec.height / 2, WALL_FRONT_Z - wallSpec.depth / 2);
   wall.receiveShadow = true;
   group.add(wall);
-  addWallPanels(group, wallSpec, seed);
-  addWallBoltGrid(group, wallSpec);
+  const panels = new THREE.Group();
+  panels.userData.realisticOnly = true;
+  addWallPanels(panels, wallSpec, seed);
+  group.add(panels);
+  const boltGrid = new THREE.Group();
+  boltGrid.userData.realisticOnly = true;
+  addWallBoltGrid(boltGrid, wallSpec);
+  group.add(boltGrid);
 
   const square = new THREE.Mesh(
     new THREE.PlaneGeometry(wallSpec.originMarker.width, wallSpec.originMarker.height),
@@ -789,19 +835,38 @@ function makeHold(type, color) {
   const textureSeed = holdSurfaceSeed(type, color);
   const bumpTexture = rockSurfaceTexture(textureSeed);
   const roughnessTexture = rockSurfaceTexture(textureSeed, 224, 16);
-  const hold = new THREE.Mesh(
-    geometry,
-    new THREE.MeshStandardMaterial({
-      color,
-      emissive: 0x000000,
+  const material = new THREE.MeshStandardMaterial({
+    color,
+    emissive: 0x000000,
+    emissiveIntensity: 0,
+    roughness: 0.9,
+    roughnessMap: roughnessTexture,
+    bumpMap: bumpTexture,
+    bumpScale: 0.0008,
+    side: THREE.DoubleSide,
+  });
+  material.userData.renderModes = {
+    synth: {
+      emissive: new THREE.Color(color),
+      emissiveIntensity: 1,
+      roughness: 0.42,
+      roughnessMap: null,
+      bumpMap: null,
+      bumpScale: 0,
+      toneMapped: false,
+    },
+    real: {
+      emissive: new THREE.Color(0x000000),
       emissiveIntensity: 0,
       roughness: 0.9,
       roughnessMap: roughnessTexture,
       bumpMap: bumpTexture,
       bumpScale: 0.0008,
-      side: THREE.DoubleSide,
-    }),
-  );
+      toneMapped: true,
+    },
+  };
+  material.userData.styleTextures = [roughnessTexture, bumpTexture];
+  const hold = new THREE.Mesh(geometry, material);
   hold.castShadow = true;
   hold.name = `${type}Hold`;
   hold.userData.holdType = type;
@@ -1860,6 +1925,7 @@ function addHold(type) {
   hold.position.set(0, currentSceneSpec.wall.height / 2, wallFront);
   hold.quaternion.identity();
   root.add(hold);
+  applyRenderMode(currentRenderMode);
   setSelectedHold(hold);
   startHoldMove(true);
 }
@@ -2365,7 +2431,7 @@ function addGround() {
   ground.position.y = -0.02;
   ground.receiveShadow = true;
   ground.layers.set(1);
-  scene.add(ground);
+  gymContextGroup.add(ground);
 
   const backWall = new THREE.Mesh(
     new THREE.PlaneGeometry(20, 10),
@@ -2374,7 +2440,7 @@ function addGround() {
   backWall.position.set(0, 5, -2.5);
   backWall.receiveShadow = true;
   backWall.layers.set(1);
-  scene.add(backWall);
+  gymContextGroup.add(backWall);
 }
 
 function updateCrashPads(wallWidth) {
@@ -2404,6 +2470,58 @@ function updateCrashPads(wallWidth) {
   }
 }
 
+function applyRenderMode(mode) {
+  currentRenderMode = mode;
+  gymContextGroup.visible = mode === "real";
+  hemisphereLight.intensity = mode === "real" ? 1.1 : 1.4;
+  fillLight.intensity = mode === "real" ? 0.45 : 0.8;
+  frontFillLight.intensity = mode === "real" ? 0.35 : 0.8;
+
+  root.traverse((object) => {
+    if (object.userData.realisticOnly) object.visible = mode === "real";
+    if (!object.material) return;
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    materials.forEach((material) => {
+      const profile = material.userData.renderModes?.[mode];
+      if (!profile) return;
+      material.roughness = profile.roughness;
+      material.bumpMap = profile.bumpMap;
+      material.roughnessMap = profile.roughnessMap;
+      material.bumpScale = profile.bumpScale;
+      if (profile.emissive) {
+        material.emissive.copy(profile.emissive);
+        material.emissiveIntensity = profile.emissiveIntensity;
+      }
+      if (profile.toneMapped !== undefined) material.toneMapped = profile.toneMapped;
+      material.needsUpdate = true;
+      if (object.userData.holdType) {
+        object.userData.baseEmissive = material.emissive.clone();
+        object.userData.baseEmissiveIntensity = material.emissiveIntensity;
+        if (object === selectedHold) {
+          material.emissive.set(0xffed68);
+          material.emissiveIntensity = 2.5;
+        }
+      }
+    });
+  });
+}
+
+function setRenderMode(mode) {
+  if (mode !== "synth" && mode !== "real") {
+    throw new RangeError('renderMode must be "synth" or "real".');
+  }
+  renderModeInputs.forEach((input) => {
+    input.checked = input.value === mode;
+  });
+  applyRenderMode(mode);
+}
+
+renderModeInputs.forEach((input) => {
+  input.addEventListener("change", () => {
+    if (input.checked) setRenderMode(input.value);
+  });
+});
+
 function rebuildScene(
   sceneSpec = structuredClone(currentSceneSpec),
   holdRecords = null,
@@ -2426,15 +2544,18 @@ function rebuildScene(
   if (holdMove) finishHoldMove(false);
   const nextRoot = new THREE.Group();
   const materialRng = seededRandom(materialSeed);
-  const noiseParameters = [[10, 20], [2, 10], [0.82, 0.95], [0.1, 0.9]];
-  const wallMaterial = new THREE.MeshStandardMaterial({
-    color: 0x9da39f,
-    roughness: 0.92,
-  });
+  const noiseParameters = [[10, 20], [2, 10], [0.5, 0.9], [0.1, 0.9]];
+  const wallMaterial = createRockMaterial(
+    materialRng,
+    [[0.35, 0.1, 0.1], [0.65, 0.4, 0.5]],
+    noiseParameters,
+    [0.82, 0.95],
+  );
   const volumeMaterial = createRockMaterial(
     materialRng,
     [[0.5, 0.1, 0.1], [0.85, 0.4, 0.5]],
     noiseParameters,
+    [0.82, 0.95],
   );
   const { wall: wallSpec, volumes: volumeSpecs } = sceneSpec;
   volumeSpecs.forEach(constrainVolumeDepth);
@@ -2487,6 +2608,7 @@ function rebuildScene(
   }
   root.clear();
   root.add(nextRoot);
+  applyRenderMode(currentRenderMode);
   currentSceneSpec = structuredClone(sceneSpec);
   currentVolumeHulls = volumeHulls;
   wallWidthInput.value = String(sceneSpec.wall.width);
@@ -2530,6 +2652,7 @@ async function generateRandomWall({
   cameraViews = null,
   wallWidth = WALL_WIDTH,
   wallHeight = WALL_HEIGHT,
+  renderMode = currentRenderMode,
 } = {}) {
   const requireCount = (value, label) => {
     const maximum = label === "volumeCount" ? 10 : 50;
@@ -2547,6 +2670,9 @@ async function generateRandomWall({
   }
   if (!Number.isFinite(wallHeight) || wallHeight <= 0) {
     throw new RangeError("wallHeight must be a positive number.");
+  }
+  if (renderMode !== "synth" && renderMode !== "real") {
+    throw new RangeError('renderMode must be "synth" or "real".');
   }
   const views = cameraViews ?? [{ height: cameraHeight, distance: cameraDistance }];
   if (!Array.isArray(views) || views.length === 0) {
@@ -2573,6 +2699,7 @@ async function generateRandomWall({
 
   const sceneSpec = createRandomSceneSpec(resolvedSeed, volumeCount, wallWidth, wallHeight);
   const materialSeed = (resolvedSeed ^ 0x9e3779b9) >>> 0;
+  setRenderMode(renderMode);
   volumeCountInput.value = String(volumeCount);
   holdCountInput.value = String(holdCount);
   rebuildScene(
@@ -2883,6 +3010,7 @@ comparisonJsonFileInput.addEventListener("change", async () => {
 });
 
 addGround();
+applyRenderMode(currentRenderMode);
 window.addEventListener("resize", resize);
 new ResizeObserver(resize).observe(canvas.parentElement);
 resize();

@@ -21,6 +21,9 @@ the hold's current yaw. Press **Enter** or left-click to commit, or press
 Press **C** to reset the interactive camera to 1 m height and 2 m from the
 wall, matching the stereo camera's position convention, and aim it directly at
 the wall.
+Use **Synth / Real** in the top toolbar to switch between the original
+procedural rock-textured scene and the realistic gym view. The switch updates
+materials and lighting without changing the current scene or hold placements.
 Press **Shift+G** to toggle a grid over the wall. The grid is aligned to the
 origin at the bottom-left corner of the red square. When enabled, use the X
 and Y spacing fields at the top of the view (both initially 0.1 m) to set grid
@@ -56,15 +59,16 @@ than 2 m, and 1 m by 1 m otherwise.
 Enable **Upd. Seed** beside the seed field to generate a fresh random seed on
 each **Regenerate scene** action; leave it unchecked to regenerate from the
 entered seed.
-The wall front uses large triangular cool-gray, blue-gray, and warm-gray panels
+In **Real** mode, the wall front uses large triangular cool-gray, blue-gray, and warm-gray panels
 with subtle plywood grain, visible seams, and a 20 cm T-nut grid. Volumes use
 randomized HSV colors, matte roughness, and subtle seeded bump and roughness
 detail. Volume roughness ranges correspond to the Blender
 `create_rock_material_with_noise` configuration in `Src/script_in_blender.py`.
 Holds also use a matte material with subtle procedural surface detail. The main
 view includes a gym backdrop, rubber floor, and crash pads; these are excluded
-from the stereo wall preview. Volume material variation advances on
-regeneration while hold placement remains deterministic.
+from the stereo wall preview. **Synth** mode restores the procedural rock wall,
+original hold finish, and original lighting. Volume material variation advances
+on regeneration while hold placement remains deterministic.
 The Scene data (JSON) field contains a versioned scene description with wall
 dimensions and origin marker, each volume's center and dimensions, the seed,
 material variation seed, and every hold's color, world position, and
@@ -169,12 +173,18 @@ From the repository root, run `.\samples.ps1` to generate 50 scenes with no
 volumes and 50 scenes with three volumes. Each scene has 30 randomly selected
 holds, a 3 m by 1.4 m wall, and a camera at 0.7 m height and 1 m distance.
 The associated JSON and stereo PNG files are saved under `Outputs/samples/`.
+Run `.\competition1.ps1` to generate 10 images for each combination of Synth or
+Real mode and zero or three volumes. Its PNG and JSON files are saved under
+`Outputs/competition1/`.
 
 Generate a batch of walls from the repository root:
 
 ```powershell
 node ThreeJS/cli.mjs --seed 42 --volumes 3 --holds 10 --wall-width 0.8 --wall-height 1.4 --camera-view 0.7,0.75 --camera-view 1.2,1.0 --requests 5 --prefix Outputs/wall_
 ```
+
+Use `--mode synth` or `--mode real` to select the scene appearance; the default
+is `real`.
 
 Repeat `--camera-view <height>,<distance>` to request multiple views of each
 wall. This writes `Outputs/wall_cam1_0001.png`,

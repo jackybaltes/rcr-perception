@@ -20,6 +20,7 @@ Options:
   --camera-distance <m>  Stereo camera distance from the wall; must be positive (default: 1)
   --camera-view <h>,<d>  Add a camera view (height, distance in meters); repeat for multiple views
   --requests <integer>   Number of walls to generate (default: 1)
+  --mode <synth|real>    Scene appearance (default: real)
   --prefix <path>        Output filename prefix (default: wall_)
   --help                 Show this help
 
@@ -70,6 +71,7 @@ function parseArguments(args) {
     cameraDistance: 1,
     cameraViews: [],
     requests: 1,
+    mode: "real",
     prefix: "wall_",
   };
   let hasLegacyCameraOption = false;
@@ -83,6 +85,7 @@ function parseArguments(args) {
     ["--camera-distance", "cameraDistance"],
     ["--camera-view", "cameraView"],
     ["--requests", "requests"],
+    ["--mode", "mode"],
     ["--prefix", "prefix"],
   ]);
 
@@ -99,6 +102,8 @@ function parseArguments(args) {
     index += 1;
     if (name === "cameraView") {
       options.cameraViews.push(parseCameraView(value));
+    } else if (name === "mode") {
+      options.mode = value.toLowerCase();
     } else if (name === "prefix") {
       options[name] = value;
     } else if (name === "wallWidth" || name === "wallHeight") {
@@ -130,6 +135,9 @@ function parseArguments(args) {
     });
   }
   if (options.requests < 1) throw new Error("--requests must be at least 1.");
+  if (options.mode !== "synth" && options.mode !== "real") {
+    throw new Error('--mode must be "synth" or "real".');
+  }
   if (!options.prefix.trim()) throw new Error("--prefix must not be empty.");
   return options;
 }
@@ -203,7 +211,7 @@ async function run() {
     const digits = Math.max(4, String(options.requests).length);
     for (let index = 0; index < options.requests; index += 1) {
       const result = await page.evaluate(
-        ({ seed, volumeCount, holdCount, cameraViews, wallWidth, wallHeight }) => (
+        ({ seed, volumeCount, holdCount, cameraViews, wallWidth, wallHeight, renderMode }) => (
           window.RCRWallAPI.generateRandomWall({
             seed,
             volumeCount,
@@ -211,6 +219,7 @@ async function run() {
             cameraViews,
             wallWidth,
             wallHeight,
+            renderMode,
           })
         ),
         {
@@ -220,6 +229,7 @@ async function run() {
           cameraViews: options.cameraViews,
           wallWidth: options.wallWidth,
           wallHeight: options.wallHeight,
+          renderMode: options.mode,
         },
       );
       const sequence = String(index + 1).padStart(digits, "0");
