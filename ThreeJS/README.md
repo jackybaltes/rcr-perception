@@ -56,11 +56,15 @@ than 2 m, and 1 m by 1 m otherwise.
 Enable **Upd. Seed** beside the seed field to generate a fresh random seed on
 each **Regenerate scene** action; leave it unchecked to regenerate from the
 entered seed.
-Each scene regeneration creates new wall and volume materials with randomized
-HSV colors and noise ranges corresponding to the Blender
+The wall front uses large triangular cool-gray, blue-gray, and warm-gray panels
+with subtle plywood grain, visible seams, and a 20 cm T-nut grid. Volumes use
+randomized HSV colors, matte roughness, and subtle seeded bump and roughness
+detail. Volume roughness ranges correspond to the Blender
 `create_rock_material_with_noise` configuration in `Src/script_in_blender.py`.
-Regenerating with the same seed advances the material variation while
-preserving deterministic hold placement.
+Holds also use a matte material with subtle procedural surface detail. The main
+view includes a gym backdrop, rubber floor, and crash pads; these are excluded
+from the stereo wall preview. Volume material variation advances on
+regeneration while hold placement remains deterministic.
 The Scene data (JSON) field contains a versioned scene description with wall
 dimensions and origin marker, each volume's center and dimensions, the seed,
 material variation seed, and every hold's color, world position, and

@@ -171,7 +171,7 @@ function resetInteractiveCamera() {
   controls.enableDamping = enableDamping;
 }
 
-scene.add(new THREE.HemisphereLight(0xd9e8f3, 0x34302a, 1.4));
+scene.add(new THREE.HemisphereLight(0xd9e8f3, 0x34302a, 1.1));
 const keyLight = new THREE.DirectionalLight(0xfff2dc, 4.5);
 keyLight.position.set(-4, 6, 7);
 keyLight.castShadow = true;
@@ -188,17 +188,19 @@ keyLight.shadow.radius = 3;
 keyLight.shadow.camera.updateProjectionMatrix();
 scene.add(keyLight);
 
-const fillLight = new THREE.DirectionalLight(0x91b7ff, 0.8);
+const fillLight = new THREE.DirectionalLight(0x91b7ff, 0.45);
 fillLight.position.set(4, 3, 6);
 scene.add(fillLight);
 
-const frontFillLight = new THREE.DirectionalLight(0xffffff, 0.8);
+const frontFillLight = new THREE.DirectionalLight(0xffffff, 0.35);
 frontFillLight.position.set(0, WALL_HEIGHT / 2, 4);
 frontFillLight.target.position.set(0, WALL_HEIGHT / 2, wallFront);
 scene.add(frontFillLight, frontFillLight.target);
 
 const root = new THREE.Group();
 scene.add(root);
+const crashPadGroup = new THREE.Group();
+scene.add(crashPadGroup);
 const comparisonOverlay = new THREE.Group();
 comparisonOverlay.visible = false;
 scene.add(comparisonOverlay);
@@ -431,6 +433,39 @@ function rockTexture(seed, hue = 0.12, saturation = 0.11, value = 0.38) {
   return texture;
 }
 
+function rockSurfaceTexture(seed, baseHeight = 128, variation = 24) {
+  const random = seededRandom(seed);
+  const size = 128;
+  const data = new Uint8Array(size * size * 4);
+  for (let i = 0; i < size * size; i += 1) {
+    const height = baseHeight + (random() - 0.5) * variation;
+    data[i * 4] = height;
+    data[i * 4 + 1] = height;
+    data[i * 4 + 2] = height;
+    data[i * 4 + 3] = 255;
+  }
+
+  const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function disposeMaterial(material) {
+  new Set([material.map, material.bumpMap, material.roughnessMap])
+    .forEach((texture) => texture?.dispose());
+  material.dispose();
+}
+
+function holdSurfaceSeed(type, color) {
+  let seed = color;
+  for (const character of type) {
+    seed = Math.imul(seed ^ character.charCodeAt(0), 16777619) >>> 0;
+  }
+  return seed;
+}
+
 function createRockMaterial(rng, colorHsvLimits, noiseParameters) {
   const noiseScale = noiseParameters[0][0]
     + rng() * (noiseParameters[0][1] - noiseParameters[0][0]);
@@ -444,16 +479,192 @@ function createRockMaterial(rng, colorHsvLimits, noiseParameters) {
       : min
   ));
   const textureSeed = Math.floor(rng() * 0x100000000);
+  const bumpTexture = rockSurfaceTexture(textureSeed);
+  const roughnessTexture = rockSurfaceTexture(textureSeed, 224, 16);
   const material = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     map: rockTexture(textureSeed, ...hsv),
+    bumpMap: bumpTexture,
+    roughnessMap: roughnessTexture,
+    bumpScale: 0.003,
     roughness: THREE.MathUtils.clamp(noiseRoughness + noiseDetail / 100, 0, 1),
   });
   material.map.repeat.set(noiseScale / 4, noiseScale / 6);
+  material.bumpMap.repeat.copy(material.map.repeat);
+  material.roughnessMap.repeat.copy(material.map.repeat);
   return material;
 }
 
-function addWall(group, material, wallSpec) {
+function createPlywoodMaterial(seed, palette) {
+  const random = seededRandom(seed);
+  const size = 256;
+  const colorData = new Uint8Array(size * size * 4);
+  const bumpData = new Uint8Array(size * size * 4);
+  const roughnessData = new Uint8Array(size * size * 4);
+  const rowGrain = Array.from({ length: size }, () => (random() - 0.5) * palette.grain);
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const index = (y * size + x) * 4;
+      const grain = rowGrain[y] + (random() - 0.5) * palette.grain * 0.7;
+      const streak = random() < 0.008 ? -palette.grain : 0;
+      colorData[index] = THREE.MathUtils.clamp(palette.color[0] + grain + streak, 0, 255);
+      colorData[index + 1] = THREE.MathUtils.clamp(palette.color[1] + grain + streak, 0, 255);
+      colorData[index + 2] = THREE.MathUtils.clamp(palette.color[2] + grain + streak, 0, 255);
+      colorData[index + 3] = 255;
+      const bump = THREE.MathUtils.clamp(128 + rowGrain[y] * 2 + (random() - 0.5) * 18, 0, 255);
+      const roughness = THREE.MathUtils.clamp(255 * palette.roughness + (random() - 0.5) * 12, 0, 255);
+      for (let channel = 0; channel < 3; channel += 1) {
+        bumpData[index + channel] = bump;
+        roughnessData[index + channel] = roughness;
+      }
+      bumpData[index + 3] = 255;
+      roughnessData[index + 3] = 255;
+    }
+  }
+
+  const colorMap = new THREE.DataTexture(colorData, size, size, THREE.RGBAFormat);
+  colorMap.colorSpace = THREE.SRGBColorSpace;
+  const bumpMap = new THREE.DataTexture(bumpData, size, size, THREE.RGBAFormat);
+  const roughnessMap = new THREE.DataTexture(roughnessData, size, size, THREE.RGBAFormat);
+  for (const texture of [colorMap, bumpMap, roughnessMap]) {
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(1, 1);
+    texture.needsUpdate = true;
+  }
+
+  return new THREE.MeshStandardMaterial({
+    map: colorMap,
+    bumpMap,
+    roughnessMap,
+    bumpScale: 0.0007,
+    roughness: palette.roughness,
+  });
+}
+
+function addWallPanels(group, wallSpec, seed) {
+  const panelPalettes = [
+    { color: [194, 198, 194], grain: 9, roughness: 0.88 },
+    { color: [160, 177, 182], grain: 11, roughness: 0.9 },
+    { color: [169, 158, 155], grain: 10, roughness: 0.89 },
+  ];
+  const materials = panelPalettes.map((palette, index) => (
+    createPlywoodMaterial(
+      (seed ^ Math.imul(index + 1, 0x9e3779b9)) >>> 0,
+      palette,
+    )
+  ));
+  const columns = Math.max(2, Math.ceil(wallSpec.width / 0.45));
+  const rows = Math.max(2, Math.ceil(wallSpec.height / 0.5));
+  const seamPositions = [];
+  const edgeKeys = new Set();
+  const frontZ = WALL_FRONT_Z + 0.00005;
+  const uvScale = 4;
+
+  const addTriangle = (points, paletteIndex) => {
+    const positions = [];
+    const uvs = [];
+    points.forEach(([x, y]) => {
+      positions.push(x, y, frontZ);
+      uvs.push((x + wallSpec.width / 2) * uvScale, y * uvScale);
+    });
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+    geometry.computeVertexNormals();
+    const panel = new THREE.Mesh(geometry, materials[paletteIndex]);
+    panel.name = `WallPanel_${paletteIndex}`;
+    panel.receiveShadow = true;
+    group.add(panel);
+
+    for (let edge = 0; edge < 3; edge += 1) {
+      const first = points[edge];
+      const second = points[(edge + 1) % 3];
+      const firstKey = `${first[0].toFixed(5)},${first[1].toFixed(5)}`;
+      const secondKey = `${second[0].toFixed(5)},${second[1].toFixed(5)}`;
+      const key = firstKey < secondKey
+        ? `${firstKey}|${secondKey}`
+        : `${secondKey}|${firstKey}`;
+      if (edgeKeys.has(key)) continue;
+      edgeKeys.add(key);
+      seamPositions.push(first[0], first[1], frontZ + 0.0002);
+      seamPositions.push(second[0], second[1], frontZ + 0.0002);
+    }
+  };
+
+  const cellPalette = [0, 1, 2, 1, 2, 0];
+  for (let row = 0; row < rows; row += 1) {
+    const bottom = row * wallSpec.height / rows;
+    const top = (row + 1) * wallSpec.height / rows;
+    for (let column = 0; column < columns; column += 1) {
+      const left = -wallSpec.width / 2 + column * wallSpec.width / columns;
+      const right = -wallSpec.width / 2 + (column + 1) * wallSpec.width / columns;
+      const bottomLeft = [left, bottom];
+      const bottomRight = [right, bottom];
+      const topRight = [right, top];
+      const topLeft = [left, top];
+      const paletteIndex = cellPalette[(row * columns + column) % cellPalette.length];
+      if ((row + column) % 2 === 0) {
+        addTriangle([bottomLeft, bottomRight, topRight], paletteIndex);
+        addTriangle([bottomLeft, topRight, topLeft], (paletteIndex + 1) % materials.length);
+      } else {
+        addTriangle([bottomLeft, bottomRight, topLeft], paletteIndex);
+        addTriangle([bottomRight, topRight, topLeft], (paletteIndex + 2) % materials.length);
+      }
+    }
+  }
+
+  const seams = new THREE.BufferGeometry();
+  seams.setAttribute("position", new THREE.Float32BufferAttribute(seamPositions, 3));
+  group.add(new THREE.LineSegments(
+    seams,
+    new THREE.LineBasicMaterial({
+      color: 0x686b68,
+      transparent: true,
+      opacity: 0.38,
+      depthWrite: false,
+    }),
+  ));
+}
+
+function addWallBoltGrid(group, wallSpec) {
+  const spacing = 0.2;
+  const columns = Math.floor(wallSpec.width / spacing);
+  const rows = Math.floor(wallSpec.height / spacing);
+  if (!columns || !rows) return;
+
+  const count = columns * rows;
+  const holes = new THREE.InstancedMesh(
+    new THREE.CircleGeometry(0.004, 12),
+    new THREE.MeshStandardMaterial({ color: 0x302b25, roughness: 1 }),
+    count,
+  );
+  const rings = new THREE.InstancedMesh(
+    new THREE.RingGeometry(0.005, 0.007, 12),
+    new THREE.MeshStandardMaterial({ color: 0x77766f, metalness: 0.35, roughness: 0.7 }),
+    count,
+  );
+  const matrix = new THREE.Matrix4();
+  let index = 0;
+  for (let row = 0; row < rows; row += 1) {
+    const y = spacing / 2 + row * spacing;
+    for (let column = 0; column < columns; column += 1) {
+      const x = -wallSpec.width / 2 + spacing / 2 + column * spacing;
+      matrix.makeTranslation(x, y, WALL_FRONT_Z + 0.001);
+      holes.setMatrixAt(index, matrix);
+      matrix.makeTranslation(x, y, WALL_FRONT_Z + 0.0015);
+      rings.setMatrixAt(index, matrix);
+      index += 1;
+    }
+  }
+  holes.instanceMatrix.needsUpdate = true;
+  rings.instanceMatrix.needsUpdate = true;
+  holes.frustumCulled = false;
+  rings.frustumCulled = false;
+  group.add(holes, rings);
+}
+
+function addWall(group, material, wallSpec, seed) {
   const wall = new THREE.Mesh(
     new THREE.BoxGeometry(wallSpec.width, wallSpec.height, wallSpec.depth),
     material,
@@ -463,6 +674,8 @@ function addWall(group, material, wallSpec) {
   wall.position.set(0, wallSpec.height / 2, WALL_FRONT_Z - wallSpec.depth / 2);
   wall.receiveShadow = true;
   group.add(wall);
+  addWallPanels(group, wallSpec, seed);
+  addWallBoltGrid(group, wallSpec);
 
   const square = new THREE.Mesh(
     new THREE.PlaneGeometry(wallSpec.originMarker.width, wallSpec.originMarker.height),
@@ -493,12 +706,24 @@ function makeTriangleSurface(a, b, c, material, name, group, surfaces, volumeCen
   }
 
   const geometry = new THREE.BufferGeometry();
+  const uvAB = new THREE.Vector3().subVectors(b, a);
+  const uvAC = new THREE.Vector3().subVectors(c, a);
+  const uAxis = uvAB.clone().normalize();
+  const vAxis = normal.clone().cross(uAxis).normalize();
   geometry.setAttribute(
     "position",
     new THREE.Float32BufferAttribute(
       [a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z],
       3,
     ),
+  );
+  geometry.setAttribute(
+    "uv",
+    new THREE.Float32BufferAttribute([
+      0, 0,
+      uvAB.length(), 0,
+      uvAC.dot(uAxis), uvAC.dot(vAxis),
+    ], 2),
   );
   geometry.computeVertexNormals();
 
@@ -561,15 +786,20 @@ function addPyramidVolume(group, surfaces, volumeSpec, wallSpec, material) {
 function makeHold(type, color) {
   const geometry = holdGeometries[type];
   if (!geometry) throw new Error(`${type} mesh is not loaded.`);
+  const textureSeed = holdSurfaceSeed(type, color);
+  const bumpTexture = rockSurfaceTexture(textureSeed);
+  const roughnessTexture = rockSurfaceTexture(textureSeed, 224, 16);
   const hold = new THREE.Mesh(
     geometry,
     new THREE.MeshStandardMaterial({
       color,
-      emissive: color,
-      emissiveIntensity: 1,
-      roughness: 0.42,
+      emissive: 0x000000,
+      emissiveIntensity: 0,
+      roughness: 0.9,
+      roughnessMap: roughnessTexture,
+      bumpMap: bumpTexture,
+      bumpScale: 0.0008,
       side: THREE.DoubleSide,
-      toneMapped: false,
     }),
   );
   hold.castShadow = true;
@@ -599,6 +829,13 @@ function normalizeHoldGeometry(geometry) {
     // Make the hold's backplate flush with the target surface at local z = 0.
     -bounds.min.z,
   );
+  const positions = geometry.getAttribute("position");
+  const uvs = new Float32Array(positions.count * 2);
+  for (let index = 0; index < positions.count; index += 1) {
+    uvs[index * 2] = positions.getX(index) * 24;
+    uvs[index * 2 + 1] = positions.getY(index) * 24;
+  }
+  geometry.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
   geometry.computeVertexNormals();
   return geometry;
 }
@@ -954,7 +1191,7 @@ function addHolds(group, surfaces, count, seed, volumeHulls) {
         placedSuccessfully = true;
         break;
       }
-      hold.material.dispose();
+      disposeMaterial(hold.material);
     }
 
     if (!placedSuccessfully) {
@@ -1124,7 +1361,7 @@ function clearComparisonOverlay() {
     const materials = Array.isArray(object.material) ? object.material : [object.material];
     materials.forEach((material) => {
       if (!disposedMaterials.has(material)) {
-        material.dispose();
+        disposeMaterial(material);
         disposedMaterials.add(material);
       }
     });
@@ -1566,7 +1803,7 @@ function finishHoldMove(commit) {
     selectedHold.material.emissive.copy(selectedHold.userData.baseEmissive);
     selectedHold.material.emissiveIntensity = selectedHold.userData.baseEmissiveIntensity;
     selectedHold.removeFromParent();
-    selectedHold.material.dispose();
+    disposeMaterial(selectedHold.material);
     selectedHold = null;
   }
   if (!commit && selectedHold) updateHoldMoveInputs(selectedHold.position);
@@ -1820,7 +2057,7 @@ function deleteSelectedHold() {
   const hold = selectedHold;
   setSelectedHold(null);
   hold.removeFromParent();
-  hold.material.dispose();
+  disposeMaterial(hold.material);
 
   const holds = [];
   root.traverse((object) => {
@@ -2122,13 +2359,49 @@ function makeHoldsFromRecords(holdData, holdColors) {
 function addGround() {
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(200, 200),
-    new THREE.MeshStandardMaterial({ color: 0x1b252b, roughness: 1 }),
+    new THREE.MeshStandardMaterial({ color: 0x343a3b, roughness: 0.96 }),
   );
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -0.02;
   ground.receiveShadow = true;
   ground.layers.set(1);
   scene.add(ground);
+
+  const backWall = new THREE.Mesh(
+    new THREE.PlaneGeometry(20, 10),
+    new THREE.MeshStandardMaterial({ color: 0x454746, roughness: 0.95 }),
+  );
+  backWall.position.set(0, 5, -2.5);
+  backWall.receiveShadow = true;
+  backWall.layers.set(1);
+  scene.add(backWall);
+}
+
+function updateCrashPads(wallWidth) {
+  const geometries = new Set(crashPadGroup.children.map((pad) => pad.geometry));
+  geometries.forEach((geometry) => geometry.dispose());
+  if (crashPadGroup.children[0]) crashPadGroup.children[0].material.dispose();
+  crashPadGroup.clear();
+
+  const padWidth = wallWidth / 2 + 0.12;
+  const padDepth = 0.72;
+  const padGeometry = new THREE.BoxGeometry(padWidth, 0.08, padDepth);
+  const padMaterial = new THREE.MeshStandardMaterial({
+    color: 0x343b3c,
+    roughness: 0.94,
+  });
+  for (const side of [-1, 1]) {
+    const pad = new THREE.Mesh(padGeometry, padMaterial);
+    pad.position.set(
+      side * padWidth / 2,
+      0.02,
+      WALL_FRONT_Z + padDepth / 2 + 0.02,
+    );
+    pad.castShadow = true;
+    pad.receiveShadow = true;
+    pad.layers.set(1);
+    crashPadGroup.add(pad);
+  }
 }
 
 function rebuildScene(
@@ -2153,12 +2426,11 @@ function rebuildScene(
   if (holdMove) finishHoldMove(false);
   const nextRoot = new THREE.Group();
   const materialRng = seededRandom(materialSeed);
-  const noiseParameters = [[10, 20], [2, 10], [0.5, 0.9], [0.1, 0.9]];
-  const wallMaterial = createRockMaterial(
-    materialRng,
-    [[0.35, 0.1, 0.1], [0.65, 0.4, 0.5]],
-    noiseParameters,
-  );
+  const noiseParameters = [[10, 20], [2, 10], [0.82, 0.95], [0.1, 0.9]];
+  const wallMaterial = new THREE.MeshStandardMaterial({
+    color: 0x9da39f,
+    roughness: 0.92,
+  });
   const volumeMaterial = createRockMaterial(
     materialRng,
     [[0.5, 0.1, 0.1], [0.85, 0.4, 0.5]],
@@ -2166,6 +2438,7 @@ function rebuildScene(
   );
   const { wall: wallSpec, volumes: volumeSpecs } = sceneSpec;
   volumeSpecs.forEach(constrainVolumeDepth);
+  updateCrashPads(wallSpec.width);
   const volumeHulls = volumeSpecs.map(createVolumeHull);
   const surfaces = [];
   const frontZ = WALL_FRONT_Z;
@@ -2188,7 +2461,7 @@ function rebuildScene(
     area: wallSpec.width * wallSpec.height / 2,
   });
 
-  addWall(nextRoot, wallMaterial, wallSpec);
+  addWall(nextRoot, wallMaterial, wallSpec, materialSeed);
   volumeSpecs.forEach((volumeSpec) => {
     addPyramidVolume(nextRoot, surfaces, volumeSpec, wallSpec, volumeMaterial);
   });
@@ -2207,8 +2480,7 @@ function rebuildScene(
       if (object.material) {
         const materials = Array.isArray(object.material) ? object.material : [object.material];
         materials.forEach((material) => {
-          material.map?.dispose();
-          material.dispose();
+          disposeMaterial(material);
         });
       }
     });
