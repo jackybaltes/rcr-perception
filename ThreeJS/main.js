@@ -12,10 +12,12 @@ const HOLD_HULL_GRID = 0.001;
 const HOLD_HULL_TOLERANCE = Math.sqrt(3) * HOLD_HULL_GRID / 2;
 const POSITION_MATCH_TOLERANCE = 0.1;
 const POSITION_MATCH_EPSILON = 1e-9;
-const HOLD_SCORE_POSITION_WEIGHT = 1;
-const HOLD_SCORE_ORIENTATION_WEIGHT = 0.5;
+const SCORE_POSITION_REFERENCE_METERS = 0.1;
+const SCORE_POSITION_WEIGHT = 2;
+const SCORE_ORIENTATION_REFERENCE_RADIANS = Math.PI / 2;
+const SCORE_ORIENTATION_WEIGHT = 1;
 const HOLD_SCORE_TYPE_MISMATCH_PENALTY = 2;
-const UNMATCHED_OBJECT_PENALTY = 1;
+const UNMATCHED_OBJECT_PENALTY = 10;
 function originMarkerDimensions(wallWidth, wallHeight) {
   const markerSize = wallWidth < 2 ? 0.1 : 1;
   const width = Math.min(markerSize, wallWidth);
@@ -1073,7 +1075,7 @@ function holdMatchScore(active, test) {
   const positionError = distanceBetween(active.position, test.position);
   const orientationError = orientationDifferenceRadians(active, test);
   const orientationSquaredError = orientationError.reduce(
-    (sum, angle) => sum + angle ** 2,
+    (sum, angle) => sum + (angle / SCORE_ORIENTATION_REFERENCE_RADIANS) ** 2,
     0,
   );
   const typeMismatchPenalty = active.type === test.type
@@ -1081,8 +1083,8 @@ function holdMatchScore(active, test) {
     : HOLD_SCORE_TYPE_MISMATCH_PENALTY;
 
   return (
-    HOLD_SCORE_POSITION_WEIGHT * positionError ** 2
-    + HOLD_SCORE_ORIENTATION_WEIGHT * orientationSquaredError
+    SCORE_POSITION_WEIGHT * (positionError / SCORE_POSITION_REFERENCE_METERS) ** 2
+    + SCORE_ORIENTATION_WEIGHT * orientationSquaredError
     + typeMismatchPenalty
   );
 }
@@ -1094,7 +1096,7 @@ function volumeMatchScore(active, test) {
     z: 0,
   });
   const positionError = distanceBetween(centerPosition(active), centerPosition(test));
-  return positionError ** 2;
+  return SCORE_POSITION_WEIGHT * (positionError / SCORE_POSITION_REFERENCE_METERS) ** 2;
 }
 
 function getComparisonItems(parsedScene) {
@@ -1345,8 +1347,8 @@ function compareLoadedScene() {
     `Test matched hold score (sum): ${testMatchedHoldScore.toFixed(6)}`,
     `Active unmatched hold penalty: ${activeUnmatchedHoldPenalty.toFixed(6)}`,
     `Test unmatched hold penalty: ${testUnmatchedHoldPenalty.toFixed(6)}`,
-    "Unmatched object penalty: 1 per unmatched object on each side.",
-    "Hold score (lower is better): position × 1 + orientation × 0.5 + 2 for a type mismatch.",
+    `Unmatched object penalty: ${UNMATCHED_OBJECT_PENALTY} per unmatched object on each side.`,
+    "Hold score (lower is better): 10 cm position error = 2; 90° single-axis rotation error = 1; hold-type mismatch = 2.",
   );
   if (calculateVolumeScores) {
     scoreLines.push(
@@ -1354,7 +1356,7 @@ function compareLoadedScene() {
       `Test matched volume score (sum): ${testMatchedVolumeScore.toFixed(6)}`,
       `Active unmatched volume penalty: ${activeUnmatchedVolumePenalty.toFixed(6)}`,
       `Test unmatched volume penalty: ${testUnmatchedVolumePenalty.toFixed(6)}`,
-      "Volume score (lower is better): squared center-position error × 1.",
+      "Volume score (lower is better): 10 cm center-position error = 2.",
     );
   } else {
     scoreLines.push("Volume score calculation is disabled.");

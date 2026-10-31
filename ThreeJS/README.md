@@ -84,16 +84,17 @@ Each rate also shows its matched and total counts; an empty object category is
 reported as N/A. Matching is one-to-one. The result table shows
 each matched position error and, for holds, the roll/pitch/yaw differences in
 degrees. Matched holds have a weighted error score of position squared error
-(weight 1) plus orientation squared error in radians (weight 0.5), with a
-penalty of 2 for a hold-type mismatch. The panel reports each matched pair's
-score and the summed active-side and test-side scores; lower is better.
+(scaled so 10 cm scores 2) plus orientation squared error (scaled so a 90°
+single-axis error scores 1), with a penalty of 2 for a hold-type mismatch.
+Matched volumes use the same 10 cm = 2 position scaling. Each unmatched object
+adds a penalty of 10 on its side. The panel reports each matched pair's score
+and the summed active-side and test-side scores; lower is better.
 Hold scores are always calculated. Use **Calculate volume scores** to toggle
-volume scoring, which is the squared center-position error (weight 1), without
+volume scoring, which uses the scaled squared center-position error, without
 affecting hold scores, match rates, match rows, or the 3D overlay. Comparison
 also shows a colored Final Score badge that sums the active and test matched hold
 scores, plus the active and test matched volume scores when volume scoring is
-enabled. Each unmatched object adds a penalty of 1 on its side; unmatched
-volume penalties are included only when volume scoring is enabled. Its color
+enabled. Unmatched volume penalties are included only when volume scoring is enabled. Its color
 shifts from green at zero toward red as the score increases.
 Comparison uses the live active scene,
 including applied grab and rotation transforms, rather than unapplied edits in
