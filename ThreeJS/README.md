@@ -74,6 +74,22 @@ Hold colors are serialized as `#RRGGBB` hexadecimal strings; legacy 24-bit
 integer colors remain accepted when loading.
 Use **Load scene from disk** to restore a saved scene, or **Save scene to disk**
 to download the current JSON as `climbing-scene.json`.
+Use the **Compare with another scene** panel below the JSON editor to load a test
+JSON file. It compares that file with the active JSON, matching holds to holds
+and volumes to volumes when their positions are no more than 10 cm apart.
+True Positive counts matched active objects; True Negative Score counts test
+objects with no active match. Matching is one-to-one. The result table shows
+each matched position error and, for holds, the roll/pitch/yaw differences in
+degrees. Orientation does not affect the position-based score, and volumes have
+no orientation field in the scene format. Comparison uses the live active scene,
+including applied grab and rotation transforms, rather than unapplied edits in
+the JSON editor. Test holds and volume outlines appear
+as cyan and orange wireframes in the 3D views; toggle this overlay as needed.
+Use **copy json to comparison json** to copy the active scene into the test
+comparison data for debugging.
+After editing the active JSON, select **Update scene from JSON** to apply it;
+the comparison refreshes automatically after it is loaded or after a grab or
+rotation is committed.
 Above the JSON field, a side-by-side front stereo preview shows the wall from
 two camera positions with a 64 mm eye separation. By default, the center camera
 is at the wall's midpoint height (0.7 m) and 1 m from the wall plane, framing

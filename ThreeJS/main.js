@@ -10,6 +10,8 @@ const WALL_FRONT_Z = 0;
 // Quantization bounds hull complexity; this tolerance covers its maximum rounding error.
 const HOLD_HULL_GRID = 0.001;
 const HOLD_HULL_TOLERANCE = Math.sqrt(3) * HOLD_HULL_GRID / 2;
+const POSITION_MATCH_TOLERANCE = 0.1;
+const POSITION_MATCH_EPSILON = 1e-9;
 function originMarkerDimensions(wallWidth, wallHeight) {
   const markerSize = wallWidth < 2 ? 0.1 : 1;
   const width = Math.min(markerSize, wallWidth);
@@ -65,6 +67,15 @@ const holdJsonFileInput = document.querySelector("#hold-json-file");
 const loadHoldsFileButton = document.querySelector("#load-holds-file");
 const saveHoldsFileButton = document.querySelector("#save-holds-file");
 const holdStatus = document.querySelector("#hold-status");
+const comparisonJsonFileInput = document.querySelector("#comparison-json-file");
+const loadComparisonFileButton = document.querySelector("#load-comparison-file");
+const copyActiveJsonToComparisonButton = document.querySelector("#copy-active-json-to-comparison");
+const compareScenesButton = document.querySelector("#compare-scenes");
+const showComparisonOverlayInput = document.querySelector("#show-comparison-overlay");
+const comparisonStatus = document.querySelector("#comparison-status");
+const comparisonResults = document.querySelector("#comparison-results");
+const comparisonScore = document.querySelector("#comparison-score");
+const comparisonRows = document.querySelector("#comparison-rows");
 const holdMoveControl = document.querySelector("#hold-move-control");
 const holdMoveInputs = ["x", "y", "z"].map((axis) => (
   document.querySelector(`#hold-move-${axis}`)
@@ -180,6 +191,9 @@ scene.add(frontFillLight, frontFillLight.target);
 
 const root = new THREE.Group();
 scene.add(root);
+const comparisonOverlay = new THREE.Group();
+comparisonOverlay.visible = false;
+scene.add(comparisonOverlay);
 const gridGroup = new THREE.Group();
 gridGroup.visible = false;
 scene.add(gridGroup);
@@ -209,6 +223,7 @@ let currentSceneSpec = structuredClone(DEFAULT_SCENE);
 let currentSeed = 42;
 let currentMaterialSeed = 0;
 let currentVolumeHulls = [];
+let testSceneData = null;
 let holdMove = null;
 let holdRotation = null;
 let lastPointerX = 0;
@@ -976,6 +991,235 @@ function serializeSceneData(holds) {
   }, null, 2);
 }
 
+function objectPosition(item, kind) {
+  return kind === "hold"
+    ? item.position
+    : { x: item.center.x, y: item.center.y, z: 0 };
+}
+
+function distanceBetween(first, second) {
+  return Math.hypot(
+    first.x - second.x,
+    first.y - second.y,
+    first.z - second.z,
+  );
+}
+
+function findPositionMatches(activeItems, testItems) {
+  const candidates = testItems.map((testItem) => activeItems
+    .map((activeItem, activeIndex) => ({
+      activeIndex,
+      distance: distanceBetween(testItem.position, activeItem.position),
+    }))
+    .filter(({ distance }) => (
+      distance <= POSITION_MATCH_TOLERANCE + POSITION_MATCH_EPSILON
+    ))
+    .sort((first, second) => first.distance - second.distance));
+  const testForActive = Array(activeItems.length).fill(-1);
+
+  function assign(testIndex, visitedActive) {
+    for (const { activeIndex } of candidates[testIndex]) {
+      if (visitedActive.has(activeIndex)) continue;
+      visitedActive.add(activeIndex);
+      if (
+        testForActive[activeIndex] === -1
+        || assign(testForActive[activeIndex], visitedActive)
+      ) {
+        testForActive[activeIndex] = testIndex;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  testItems.forEach((_, testIndex) => assign(testIndex, new Set()));
+  return testForActive.flatMap((testIndex, activeIndex) => (
+    testIndex === -1
+      ? []
+      : [{
+        active: activeItems[activeIndex],
+        test: testItems[testIndex],
+        distance: distanceBetween(
+          activeItems[activeIndex].position,
+          testItems[testIndex].position,
+        ),
+      }]
+  ));
+}
+
+function wrappedAngleDifference(first, second) {
+  return Math.abs(Math.atan2(Math.sin(first - second), Math.cos(first - second)));
+}
+
+function orientationDifference(active, test) {
+  return ["roll", "pitch", "yaw"].map((angle) => (
+    wrappedAngleDifference(active.orientation[angle], test.orientation[angle])
+      * 180 / Math.PI
+  ));
+}
+
+function getComparisonItems(parsedScene) {
+  return {
+    holds: parsedScene.holds.map((hold) => ({
+      ...hold,
+      kind: "hold",
+      position: hold.position,
+    })),
+    volumes: parsedScene.scene.volumes.map((volume) => ({
+      ...volume,
+      kind: "volume",
+      position: objectPosition(volume, "volume"),
+    })),
+  };
+}
+
+function clearComparisonOverlay() {
+  const disposedMaterials = new Set();
+  comparisonOverlay.traverse((object) => {
+    if (object.geometry && !Object.values(holdGeometries).includes(object.geometry)) {
+      object.geometry.dispose();
+    }
+    if (!object.material) return;
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    materials.forEach((material) => {
+      if (!disposedMaterials.has(material)) {
+        material.dispose();
+        disposedMaterials.add(material);
+      }
+    });
+  });
+  comparisonOverlay.clear();
+}
+
+function renderComparisonOverlay(testItems) {
+  const missingHold = testItems.holds.find((hold) => (
+    !holdGeometries[getHoldTypeFromRecordType(hold.type)]
+  ));
+  if (missingHold) {
+    throw new Error(`${getHoldTypeFromRecordType(missingHold.type)} hold mesh is not loaded yet.`);
+  }
+
+  clearComparisonOverlay();
+  testItems.volumes.forEach((volume) => {
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xffad5c,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.95,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    addPyramidVolume(
+      comparisonOverlay,
+      [],
+      volume,
+      testSceneData.scene.wall,
+      material,
+    );
+  });
+  testItems.holds.forEach((hold) => {
+    const type = getHoldTypeFromRecordType(hold.type);
+    if (!holdGeometries[type]) {
+      throw new Error(`${type} hold mesh is not loaded yet.`);
+    }
+    const overlayHold = new THREE.Mesh(
+      holdGeometries[type],
+      new THREE.MeshBasicMaterial({
+        color: 0x56e6ec,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.95,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    );
+    overlayHold.position.set(hold.position.x, hold.position.y, hold.position.z);
+    overlayHold.quaternion.setFromEuler(
+      new THREE.Euler(
+        hold.orientation.roll,
+        hold.orientation.pitch,
+        hold.orientation.yaw,
+        "XYZ",
+      ),
+    );
+    comparisonOverlay.add(overlayHold);
+  });
+  comparisonOverlay.visible = showComparisonOverlayInput.checked;
+}
+
+function appendComparisonRow(activeName, testName, kind, distance, angles) {
+  const row = document.createElement("tr");
+  const values = [
+    activeName ?? "—",
+    `${kind}: ${testName}`,
+    activeName === null ? "No active match" : `${(distance * 100).toFixed(1)} cm`,
+    angles ? angles.map((angle) => `${angle.toFixed(1)}°`).join(" / ") : "—",
+  ];
+  values.forEach((value) => {
+    const cell = document.createElement("td");
+    cell.textContent = value;
+    row.append(cell);
+  });
+  comparisonRows.append(row);
+}
+
+function getActiveSceneData() {
+  const holds = [];
+  root.traverse((object) => {
+    if (isHold(object)) holds.push(object);
+  });
+  return parseSceneData(serializeSceneData(holds));
+}
+
+function compareLoadedScene() {
+  if (!testSceneData) return;
+  const activeItems = getComparisonItems(getActiveSceneData());
+  const testItems = getComparisonItems(testSceneData);
+  const holdMatches = findPositionMatches(activeItems.holds, testItems.holds);
+  const volumeMatches = findPositionMatches(activeItems.volumes, testItems.volumes);
+  const matches = [...holdMatches, ...volumeMatches];
+  const activeCount = activeItems.holds.length + activeItems.volumes.length;
+  const testCount = testItems.holds.length + testItems.volumes.length;
+  const trueNegative = testCount - matches.length;
+  const unmatchedTestHolds = testItems.holds.length - holdMatches.length;
+  const unmatchedTestVolumes = testItems.volumes.length - volumeMatches.length;
+
+  comparisonRows.replaceChildren();
+  matches.forEach(({ active, test, distance }) => {
+    appendComparisonRow(
+      active.name,
+      test.name,
+      test.kind,
+      distance,
+      test.kind === "hold" ? orientationDifference(active, test) : null,
+    );
+  });
+  [...testItems.holds, ...testItems.volumes].forEach((test) => {
+    const matched = matches.some((match) => match.test === test);
+    if (!matched) appendComparisonRow(null, test.name, test.kind, null, null);
+  });
+  comparisonScore.textContent = [
+    `True Positive: ${matches.length} / ${activeCount} active items found (${holdMatches.length} holds, ${volumeMatches.length} volumes).`,
+    `True Negative Score: ${trueNegative} / ${testCount} test items have no active match (${unmatchedTestHolds} holds, ${unmatchedTestVolumes} volumes).`,
+    `Active items not found in test: ${activeCount - matches.length}.`,
+  ].join(" ");
+  comparisonResults.hidden = false;
+  renderComparisonOverlay(testItems);
+  comparisonStatus.textContent = "Compared the active scene with the loaded test file.";
+  delete comparisonStatus.dataset.error;
+}
+
+function refreshComparisonAfterSceneChange() {
+  try {
+    compareLoadedScene();
+  } catch (error) {
+    comparisonStatus.textContent = error instanceof Error
+      ? error.message
+      : String(error);
+    comparisonStatus.dataset.error = "true";
+  }
+}
+
 function setSelectedHold(hold) {
   if (holdMove && hold !== selectedHold) finishHoldMove(false);
   if (holdRotation && hold !== selectedHold) finishHoldRotation(false);
@@ -1157,6 +1401,7 @@ function finishHoldMove(commit) {
       if (isHold(object)) holds.push(object);
     });
     holdJson.value = serializeSceneData(holds);
+    if (testSceneData) refreshComparisonAfterSceneChange();
     scrollJsonToHold(selectedHold.userData.jsonKey);
     holdCountInput.value = String(holds.length);
     if (newlyCreatedHold) {
@@ -1376,6 +1621,7 @@ function finishHoldRotation(commit) {
       if (isHold(object)) holds.push(object);
     });
     holdJson.value = serializeSceneData(holds);
+    if (testSceneData) refreshComparisonAfterSceneChange();
     scrollJsonToHold(selectedHold.userData.jsonKey);
     holdStatus.textContent = `Rotated ${selectedHold.userData.jsonKey}.`;
   } else if (selectedHold) {
@@ -1405,6 +1651,7 @@ function deleteSelectedHold() {
     if (isHold(object)) holds.push(object);
   });
   holdJson.value = serializeSceneData(holds);
+  if (testSceneData) refreshComparisonAfterSceneChange();
   holdCountInput.value = String(holds.length);
   status.textContent = `Scene ${generation} · seed ${currentSeed} · ${holds.length} holds · ${currentSceneSpec.volumes.length} volumes`;
   holdStatus.textContent = `Deleted ${deletedKey}.`;
@@ -1807,6 +2054,7 @@ function rebuildScene(
   status.textContent = `Scene ${generation} · seed ${seed} · ${holds.length} holds · ${volumeSpecs.length} volumes`;
   delete status.dataset.error;
   if (wallGridVisible) rebuildWallGrid();
+  if (testSceneData) refreshComparisonAfterSceneChange();
 }
 
 function captureStereoPng() {
@@ -2077,6 +2325,13 @@ loadHoldsButton.addEventListener("click", () => {
   }
 });
 
+holdJson.addEventListener("input", () => {
+  if (testSceneData) {
+    comparisonStatus.textContent = "JSON editor changed. Update the scene from JSON to apply edits before comparing.";
+    delete comparisonStatus.dataset.error;
+  }
+});
+
 loadHoldsFileButton.addEventListener("click", () => {
   holdJsonFileInput.click();
 });
@@ -2110,6 +2365,62 @@ saveHoldsFileButton.addEventListener("click", () => {
   window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
   holdStatus.textContent = "JSON download started: climbing-scene.json.";
   delete holdStatus.dataset.error;
+});
+
+loadComparisonFileButton.addEventListener("click", () => {
+  comparisonJsonFileInput.click();
+});
+
+copyActiveJsonToComparisonButton.addEventListener("click", () => {
+  try {
+    testSceneData = getActiveSceneData();
+    compareScenesButton.disabled = false;
+    showComparisonOverlayInput.disabled = false;
+    compareLoadedScene();
+    comparisonStatus.textContent = "Copied the active scene to the comparison JSON.";
+  } catch (error) {
+    comparisonStatus.textContent = error instanceof Error
+      ? error.message
+      : String(error);
+    comparisonStatus.dataset.error = "true";
+  }
+});
+
+compareScenesButton.addEventListener("click", () => {
+  try {
+    compareLoadedScene();
+  } catch (error) {
+    comparisonStatus.textContent = error instanceof Error
+      ? error.message
+      : String(error);
+    comparisonStatus.dataset.error = "true";
+  }
+});
+
+showComparisonOverlayInput.addEventListener("change", () => {
+  comparisonOverlay.visible = showComparisonOverlayInput.checked && Boolean(testSceneData);
+});
+
+comparisonJsonFileInput.addEventListener("change", async () => {
+  const [file] = comparisonJsonFileInput.files;
+  if (!file) return;
+
+  try {
+    const candidate = parseSceneData(await file.text());
+    parseSceneData(holdJson.value);
+    testSceneData = candidate;
+    compareScenesButton.disabled = false;
+    showComparisonOverlayInput.disabled = false;
+    compareLoadedScene();
+    comparisonStatus.textContent = `Loaded and compared ${file.name}.`;
+  } catch (error) {
+    comparisonStatus.textContent = error instanceof Error
+      ? error.message
+      : String(error);
+    comparisonStatus.dataset.error = "true";
+  } finally {
+    comparisonJsonFileInput.value = "";
+  }
 });
 
 addGround();

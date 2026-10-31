@@ -135,6 +135,40 @@
           <div id="hold-status" role="status" aria-live="polite"></div>
         </div>
       </section>
+      <section class="comparison-panel" aria-labelledby="comparison-label">
+        <div class="comparison-heading">
+          <h2 id="comparison-label">Compare with another scene</h2>
+          <span>Matches require the same kind of object and positions within 10 cm; orientation is reported but does not affect the score.</span>
+        </div>
+        <div class="comparison-controls">
+          <input id="comparison-json-file" type="file" accept=".json,application/json" hidden>
+          <button id="load-comparison-file" type="button">Load test JSON</button>
+          <button id="copy-active-json-to-comparison" type="button">copy json to comparison json</button>
+          <button id="compare-scenes" type="button" disabled>Compare with active JSON</button>
+          <label class="comparison-overlay-toggle">
+            <input id="show-comparison-overlay" type="checkbox" checked disabled>
+            <span>Show test objects in 3D view</span>
+          </label>
+        </div>
+        <div id="comparison-status" class="comparison-status" role="status" aria-live="polite">Load a test JSON file to compare it with the active scene.</div>
+        <div id="comparison-results" aria-live="polite" hidden>
+          <p id="comparison-score"></p>
+          <p class="comparison-legend"><span class="test-hold-key">Test holds</span><span class="test-volume-key">Test volumes</span></p>
+          <div class="comparison-table-wrap">
+            <table class="comparison-table">
+              <thead>
+                <tr>
+                  <th>Active item</th>
+                  <th>Test item</th>
+                  <th>Position Δ</th>
+                  <th>Orientation Δ (roll / pitch / yaw)</th>
+                </tr>
+              </thead>
+              <tbody id="comparison-rows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
     </main>
   </body>
 </html>

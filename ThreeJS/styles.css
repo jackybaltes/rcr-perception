@@ -431,6 +431,140 @@ body {
   color: #ffb6b6;
 }
 
+.comparison-panel {
+  display: grid;
+  gap: 10px;
+  padding: 14px 20px 18px;
+  border-top: 1px solid #29343b;
+  background: #12191e;
+}
+
+.comparison-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.comparison-heading h2 {
+  margin: 0;
+  color: #d7e0e4;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.comparison-heading span,
+.comparison-status,
+.comparison-score,
+.comparison-legend {
+  color: #91a4af;
+  font-size: 11px;
+}
+
+.comparison-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+}
+
+.comparison-controls button {
+  height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 5px;
+  background: #d3e75c;
+  color: #192015;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.comparison-controls button:hover {
+  background: #e2f57c;
+}
+
+.comparison-controls button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.comparison-overlay-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #b7c4ca;
+  font-size: 11px;
+}
+
+.comparison-overlay-toggle input {
+  accent-color: #d3e75c;
+}
+
+.comparison-status[data-error="true"] {
+  color: #ffb6b6;
+}
+
+#comparison-results[hidden] {
+  display: none;
+}
+
+#comparison-score {
+  margin: 0;
+  color: #d7e0e4;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.comparison-legend {
+  display: flex;
+  gap: 16px;
+  margin: 0;
+}
+
+.test-hold-key::before,
+.test-volume-key::before {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 5px;
+  border: 1px solid currentColor;
+  content: "";
+}
+
+.test-hold-key::before {
+  color: #56e6ec;
+}
+
+.test-volume-key::before {
+  color: #ffad5c;
+}
+
+.comparison-table-wrap {
+  overflow-x: auto;
+}
+
+.comparison-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: #c9d7dc;
+  font-size: 11px;
+  text-align: left;
+}
+
+.comparison-table th,
+.comparison-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid #29343b;
+  white-space: nowrap;
+}
+
+.comparison-table th {
+  color: #91a4af;
+  font-weight: 600;
+}
+
 #scene {
   display: block;
   width: 100%;
@@ -586,11 +720,16 @@ body {
     padding: 12px 16px;
   }
 
+  .comparison-panel {
+    padding: 12px 16px;
+  }
+
   .stereo-panel {
     padding: 12px 16px;
   }
 
-  .hold-data-heading {
+  .hold-data-heading,
+  .comparison-heading {
     align-items: flex-start;
     flex-direction: column;
     gap: 4px;
