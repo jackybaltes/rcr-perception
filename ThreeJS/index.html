@@ -146,12 +146,17 @@
           <button id="copy-active-json-to-comparison" type="button">copy json to comparison json</button>
           <button id="compare-scenes" type="button" disabled>Compare with active JSON</button>
           <label class="comparison-overlay-toggle">
+            <input id="calculate-volume-scores" type="checkbox" checked>
+            <span>Calculate volume scores</span>
+          </label>
+          <label class="comparison-overlay-toggle">
             <input id="show-comparison-overlay" type="checkbox" checked disabled>
             <span>Show test objects in 3D view</span>
           </label>
         </div>
         <div id="comparison-status" class="comparison-status" role="status" aria-live="polite">Load a test JSON file to compare it with the active scene.</div>
         <div id="comparison-results" aria-live="polite" hidden>
+          <output id="comparison-combined-score" class="comparison-combined-score" aria-live="polite"></output>
           <p id="comparison-score"></p>
           <p class="comparison-legend"><span class="test-hold-key">Test holds</span><span class="test-volume-key">Test volumes</span></p>
           <div class="comparison-table-wrap">
@@ -162,8 +167,8 @@
                   <th>Test item</th>
                   <th>Position Δ</th>
                   <th>Orientation Δ (roll / pitch / yaw)</th>
-                  <th>Active hold score</th>
-                  <th>Test hold score</th>
+                  <th>Active score</th>
+                  <th>Test score</th>
                 </tr>
               </thead>
               <tbody id="comparison-rows"></tbody>

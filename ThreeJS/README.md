@@ -87,7 +87,15 @@ degrees. Matched holds have a weighted error score of position squared error
 (weight 1) plus orientation squared error in radians (weight 0.5), with a
 penalty of 2 for a hold-type mismatch. The panel reports each matched pair's
 score and the summed active-side and test-side scores; lower is better.
-Volumes have no orientation field or hold score. Comparison uses the live active scene,
+Hold scores are always calculated. Use **Calculate volume scores** to toggle
+volume scoring, which is the squared center-position error (weight 1), without
+affecting hold scores, match rates, match rows, or the 3D overlay. Comparison
+also shows a colored Final Score badge that sums the active and test matched hold
+scores, plus the active and test matched volume scores when volume scoring is
+enabled. Each unmatched object adds a penalty of 1 on its side; unmatched
+volume penalties are included only when volume scoring is enabled. Its color
+shifts from green at zero toward red as the score increases.
+Comparison uses the live active scene,
 including applied grab and rotation transforms, rather than unapplied edits in
 the JSON editor. Test holds and volume outlines appear
 as cyan and orange wireframes in the 3D views; toggle this overlay as needed.

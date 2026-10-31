@@ -15,6 +15,7 @@ const POSITION_MATCH_EPSILON = 1e-9;
 const HOLD_SCORE_POSITION_WEIGHT = 1;
 const HOLD_SCORE_ORIENTATION_WEIGHT = 0.5;
 const HOLD_SCORE_TYPE_MISMATCH_PENALTY = 2;
+const UNMATCHED_OBJECT_PENALTY = 1;
 function originMarkerDimensions(wallWidth, wallHeight) {
   const markerSize = wallWidth < 2 ? 0.1 : 1;
   const width = Math.min(markerSize, wallWidth);
@@ -74,9 +75,11 @@ const comparisonJsonFileInput = document.querySelector("#comparison-json-file");
 const loadComparisonFileButton = document.querySelector("#load-comparison-file");
 const copyActiveJsonToComparisonButton = document.querySelector("#copy-active-json-to-comparison");
 const compareScenesButton = document.querySelector("#compare-scenes");
+const calculateVolumeScoresInput = document.querySelector("#calculate-volume-scores");
 const showComparisonOverlayInput = document.querySelector("#show-comparison-overlay");
 const comparisonStatus = document.querySelector("#comparison-status");
 const comparisonResults = document.querySelector("#comparison-results");
+const comparisonCombinedScore = document.querySelector("#comparison-combined-score");
 const comparisonScore = document.querySelector("#comparison-score");
 const comparisonRows = document.querySelector("#comparison-rows");
 const holdMoveControl = document.querySelector("#hold-move-control");
@@ -1084,6 +1087,16 @@ function holdMatchScore(active, test) {
   );
 }
 
+function volumeMatchScore(active, test) {
+  const centerPosition = (volume) => ({
+    x: volume.center.x,
+    y: volume.center.y,
+    z: 0,
+  });
+  const positionError = distanceBetween(centerPosition(active), centerPosition(test));
+  return positionError ** 2;
+}
+
 function getComparisonItems(parsedScene) {
   return {
     holds: parsedScene.holds.map((hold) => ({
@@ -1185,8 +1198,12 @@ function appendComparisonRow(
   const row = document.createElement("tr");
   const values = [
     activeName ?? "—",
-    `${kind}: ${testName}`,
-    activeName === null ? "No active match" : `${(distance * 100).toFixed(1)} cm`,
+    testName === null ? "—" : `${kind}: ${testName}`,
+    activeName === null
+      ? "No active match"
+      : testName === null
+        ? "No test match"
+        : `${(distance * 100).toFixed(1)} cm`,
     angles ? angles.map((angle) => `${angle.toFixed(1)}°`).join(" / ") : "—",
     activeHoldScore === null ? "—" : activeHoldScore.toFixed(6),
     testHoldScore === null ? "—" : testHoldScore.toFixed(6),
@@ -1217,15 +1234,29 @@ function compareLoadedScene() {
   const formatRate = (matched, total) => (
     `${total > 0 ? `${(matched / total * 100).toFixed(1)}%` : "N/A"} (${matched}/${total})`
   );
+  const calculateVolumeScores = calculateVolumeScoresInput.checked;
   let activeMatchedHoldScore = 0;
   let testMatchedHoldScore = 0;
+  let activeMatchedVolumeScore = 0;
+  let testMatchedVolumeScore = 0;
+  const matchedActiveHolds = new Set(holdMatches.map(({ active }) => active));
+  const matchedTestHolds = new Set(holdMatches.map(({ test }) => test));
+  const matchedActiveVolumes = new Set(volumeMatches.map(({ active }) => active));
+  const matchedTestVolumes = new Set(volumeMatches.map(({ test }) => test));
 
   comparisonRows.replaceChildren();
   matches.forEach(({ active, test, distance }) => {
-    const score = test.kind === "hold" ? holdMatchScore(active, test) : null;
-    if (score !== null) {
-      activeMatchedHoldScore += score;
-      testMatchedHoldScore += score;
+    const holdScore = test.kind === "hold" ? holdMatchScore(active, test) : null;
+    const volumeScore = calculateVolumeScores && test.kind === "volume"
+      ? volumeMatchScore(active, test)
+      : null;
+    if (holdScore !== null) {
+      activeMatchedHoldScore += holdScore;
+      testMatchedHoldScore += holdScore;
+    }
+    if (volumeScore !== null) {
+      activeMatchedVolumeScore += volumeScore;
+      testMatchedVolumeScore += volumeScore;
     }
     appendComparisonRow(
       active.name,
@@ -1233,23 +1264,119 @@ function compareLoadedScene() {
       test.kind,
       distance,
       test.kind === "hold" ? orientationDifference(active, test) : null,
-      score,
-      score,
+      holdScore ?? volumeScore,
+      holdScore ?? volumeScore,
     );
   });
-  [...testItems.holds, ...testItems.volumes].forEach((test) => {
-    const matched = matches.some((match) => match.test === test);
-    if (!matched) appendComparisonRow(null, test.name, test.kind, null, null);
+  activeItems.holds.forEach((active) => {
+    if (!matchedActiveHolds.has(active)) {
+      appendComparisonRow(
+        active.name,
+        null,
+        active.kind,
+        null,
+        null,
+        UNMATCHED_OBJECT_PENALTY,
+        null,
+      );
+    }
   });
-  comparisonScore.textContent = [
+  testItems.holds.forEach((test) => {
+    if (!matchedTestHolds.has(test)) {
+      appendComparisonRow(
+        null,
+        test.name,
+        test.kind,
+        null,
+        null,
+        null,
+        UNMATCHED_OBJECT_PENALTY,
+      );
+    }
+  });
+  if (calculateVolumeScores) {
+    activeItems.volumes.forEach((active) => {
+      if (!matchedActiveVolumes.has(active)) {
+        appendComparisonRow(
+          active.name,
+          null,
+          active.kind,
+          null,
+          null,
+          UNMATCHED_OBJECT_PENALTY,
+          null,
+        );
+      }
+    });
+    testItems.volumes.forEach((test) => {
+      if (!matchedTestVolumes.has(test)) {
+        appendComparisonRow(
+          null,
+          test.name,
+          test.kind,
+          null,
+          null,
+          null,
+          UNMATCHED_OBJECT_PENALTY,
+        );
+      }
+    });
+  }
+  const activeUnmatchedHoldPenalty = (
+    activeItems.holds.length - holdMatches.length
+  ) * UNMATCHED_OBJECT_PENALTY;
+  const testUnmatchedHoldPenalty = (
+    testItems.holds.length - holdMatches.length
+  ) * UNMATCHED_OBJECT_PENALTY;
+  const activeUnmatchedVolumePenalty = calculateVolumeScores
+    ? (activeItems.volumes.length - volumeMatches.length) * UNMATCHED_OBJECT_PENALTY
+    : 0;
+  const testUnmatchedVolumePenalty = calculateVolumeScores
+    ? (testItems.volumes.length - volumeMatches.length) * UNMATCHED_OBJECT_PENALTY
+    : 0;
+  const scoreLines = [
     `Active matched volumes (AMV): ${formatRate(volumeMatches.length, activeItems.volumes.length)}`,
     `Active matched holds (AMH): ${formatRate(holdMatches.length, activeItems.holds.length)}`,
     `Test matched volumes (TMV): ${formatRate(volumeMatches.length, testItems.volumes.length)}`,
     `Test matched holds (TMH): ${formatRate(holdMatches.length, testItems.holds.length)}`,
+  ];
+  scoreLines.push(
     `Active matched hold score (sum): ${activeMatchedHoldScore.toFixed(6)}`,
     `Test matched hold score (sum): ${testMatchedHoldScore.toFixed(6)}`,
+    `Active unmatched hold penalty: ${activeUnmatchedHoldPenalty.toFixed(6)}`,
+    `Test unmatched hold penalty: ${testUnmatchedHoldPenalty.toFixed(6)}`,
+    "Unmatched object penalty: 1 per unmatched object on each side.",
     "Hold score (lower is better): position × 1 + orientation × 0.5 + 2 for a type mismatch.",
-  ].join("\n");
+  );
+  if (calculateVolumeScores) {
+    scoreLines.push(
+      `Active matched volume score (sum): ${activeMatchedVolumeScore.toFixed(6)}`,
+      `Test matched volume score (sum): ${testMatchedVolumeScore.toFixed(6)}`,
+      `Active unmatched volume penalty: ${activeUnmatchedVolumePenalty.toFixed(6)}`,
+      `Test unmatched volume penalty: ${testUnmatchedVolumePenalty.toFixed(6)}`,
+      "Volume score (lower is better): squared center-position error × 1.",
+    );
+  } else {
+    scoreLines.push("Volume score calculation is disabled.");
+  }
+  const activeTotal = activeMatchedHoldScore
+    + activeUnmatchedHoldPenalty
+    + (calculateVolumeScores
+      ? activeMatchedVolumeScore + activeUnmatchedVolumePenalty
+      : 0);
+  const testTotal = testMatchedHoldScore
+    + testUnmatchedHoldPenalty
+    + (calculateVolumeScores
+      ? testMatchedVolumeScore + testUnmatchedVolumePenalty
+      : 0);
+  const combinedScore = activeTotal + testTotal;
+  const scoreColorHue = Math.max(0, 120 - Math.min(combinedScore, 10) * 12);
+  comparisonCombinedScore.textContent = `Final Score (lower is better): ${combinedScore.toFixed(6)}`;
+  comparisonCombinedScore.style.setProperty(
+    "--comparison-score-hue",
+    `${scoreColorHue.toFixed(1)}`,
+  );
+  comparisonScore.textContent = scoreLines.join("\n");
   comparisonResults.hidden = false;
   renderComparisonOverlay(testItems);
   comparisonStatus.textContent = "Compared the active scene with the loaded test file.";
@@ -2434,6 +2561,17 @@ copyActiveJsonToComparisonButton.addEventListener("click", () => {
 });
 
 compareScenesButton.addEventListener("click", () => {
+  try {
+    compareLoadedScene();
+  } catch (error) {
+    comparisonStatus.textContent = error instanceof Error
+      ? error.message
+      : String(error);
+    comparisonStatus.dataset.error = "true";
+  }
+});
+
+calculateVolumeScoresInput.addEventListener("change", () => {
   try {
     compareLoadedScene();
   } catch (error) {
