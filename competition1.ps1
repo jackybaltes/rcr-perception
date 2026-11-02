@@ -25,7 +25,7 @@ try {
             "--wall-height", "1.4",
             "--camera-height", "0.7",
             "--camera-distance", "1",
-            "--requests", "10",
+            "--requests", "20",
             "--prefix", $prefix
         )
 
