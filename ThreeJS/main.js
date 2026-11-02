@@ -2738,6 +2738,19 @@ async function generateRandomWall({
 
 window.RCRWallAPI = {
   generateRandomWall,
+  scoreScenes(activeJson, testJson) {
+    holdJson.value = activeJson;
+    loadSceneFromJson();
+    calculateVolumeScoresInput.checked = false;
+    testSceneData = parseSceneData(testJson);
+    compareLoadedScene();
+    const scoreMatch = /^Final Score \(lower is better\): ([\d.]+)$/
+      .exec(comparisonCombinedScore.textContent);
+    if (!scoreMatch) {
+      throw new Error("The comparison UI did not produce a final score.");
+    }
+    return Number(scoreMatch[1]);
+  },
   isReady: () => Object.values(holdGeometries).every(Boolean),
 };
 

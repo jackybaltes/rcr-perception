@@ -186,6 +186,41 @@ node ThreeJS/cli.mjs --seed 42 --volumes 3 --holds 10 --wall-width 0.8 --wall-he
 Use `--mode synth` or `--mode real` to select the scene appearance; the default
 is `real`.
 
+## Score team submissions
+
+Arrange the submissions directory with the reference scenes under `solutions/`
+and one directory per team beside it. Team JSON files can be nested in any
+subdirectories and are paired with reference scenes by filename:
+
+```text
+submissions/
+  solutions/...
+  edlass/...
+  another-team/...
+```
+
+From the repository root, run:
+
+```powershell
+.\score_1.ps1 .\path\to\submissions
+```
+
+Optionally set the workbook location with `-OutputExcel .\reports\scores.xlsx`.
+
+The script loads each reference scene and matching team scene in the Three.js
+simulator and sums the simulator's Final Score for each team. Volume scoring
+follows the comparison panel default and is disabled. The script creates
+`scores.xlsx` with one row per solution comparison, separate JSON-link and
+score columns for each team, and a final team totals row. Hyperlinks are
+relative to the workbook's directory. Missing or conflicting files are marked
+in the score column. The adjacent head-to-head table counts per-solution wins
+when the row team's score is higher than the column team's; ties and solutions
+missing a score for either team do not count. Diagonal cells are `N/A`.
+Multiple copies of a solution filename are accepted when identical; if their
+contents differ, that solution is reported as an error and is not scored. Team
+files are not checked for content equality with their reference files; the
+simulator comparison determines the score.
+
 Repeat `--camera-view <height>,<distance>` to request multiple views of each
 wall. This writes `Outputs/wall_cam1_0001.png`,
 `Outputs/wall_cam2_0001.png`, and one shared
